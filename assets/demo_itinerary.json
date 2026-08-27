@@ -1,0 +1,145 @@
+{
+  "itinerary_id": "demo_pvg_nrt_2026",
+  "product": "TripCascade",
+  "trip": "Shanghai (PVG) -> Tokyo (NRT) -> Shanghai (PVG), family of 3, 4-6 Sep 2026",
+  "settlement_cap_cents": 5000,
+  "generated": "2026-08-27",
+  "source": "atlas-flight CLI Sandbox rehearsal (assets/rehearsal_log.md)",
+  "passengers": [
+    {
+      "traveler_id": "1",
+      "name": "ZHANG/SAN",
+      "type": "adult",
+      "age": 41,
+      "gender": "M"
+    },
+    {
+      "traveler_id": "2",
+      "name": "LI/SI",
+      "type": "adult",
+      "age": 39,
+      "gender": "F"
+    },
+    {
+      "traveler_id": "3",
+      "name": "ZHANG/MING",
+      "type": "child",
+      "age": 8,
+      "gender": "M"
+    }
+  ],
+  "nodes": [
+    {
+      "node_id": "leg1_pvg_nrt",
+      "node_type": "flight",
+      "actionable": true,
+      "atlas_entity_ref": {
+        "offer_id": "off_319604c13a009b0177820444",
+        "booking_id": "book_661b9f9ff49253871f8df153",
+        "orderNo": "TESTA20260827202428852",
+        "payment_confirmation_id": "paycfm_93833be3f3255ff75a661783"
+      },
+      "scheduled_start": "2026-09-04T17:35:00+08:00",
+      "scheduled_end": "2026-09-04T21:35:00+09:00",
+      "location_origin": "PVG",
+      "location_destination": "NRT",
+      "carrier": "IJ",
+      "flight_number": "IJ004",
+      "cabin_class": 1,
+      "duration_minutes": 180,
+      "total_price": 486.68,
+      "currency": "USD",
+      "payment_status": "success",
+      "ticket_status": "pending",
+      "ticket_numbers": [],
+      "booking_constraints": {
+        "refundable": false,
+        "fare_class": "LCC"
+      },
+      "status": "booked",
+      "depends_on": [],
+      "evidence_source": "atlas-flight CLI rehearsal 2026-08-27 (Sandbox); doc/atlas_surface.md"
+    },
+    {
+      "node_id": "hotel_tokyo",
+      "node_type": "hotel",
+      "actionable": false,
+      "atlas_entity_ref": null,
+      "scheduled_start": "2026-09-04T15:00:00+09:00",
+      "scheduled_end": "2026-09-06T11:00:00+09:00",
+      "location_origin": null,
+      "location_destination": "Tokyo",
+      "booking_constraints": {
+        "refundable": false,
+        "rate": "family",
+        "cancel_by": "2026-09-03T23:59:00+09:00"
+      },
+      "status": "booked",
+      "depends_on": [
+        "leg1_pvg_nrt"
+      ],
+      "evidence_source": "synthetic (advisory node; Atlas has no hotel endpoint - doc/atlas_surface.md sec 4). Impact analysis + drafted notification only; never a fake booking."
+    },
+    {
+      "node_id": "leg2_nrt_pvg",
+      "node_type": "flight",
+      "actionable": true,
+      "atlas_entity_ref": {
+        "offer_id": "off_723f848650cfaff1cb184f70",
+        "booking_id": null,
+        "orderNo": null,
+        "payment_confirmation_id": null
+      },
+      "scheduled_start": "2026-09-06T13:55:00+09:00",
+      "scheduled_end": "2026-09-06T16:20:00+08:00",
+      "location_origin": "NRT",
+      "location_destination": "PVG",
+      "carrier": "IJ",
+      "flight_number": "IJ003",
+      "cabin_class": 1,
+      "total_price": 481.43,
+      "currency": "USD",
+      "payment_status": "not_booked",
+      "ticket_status": "not_booked",
+      "booking_constraints": {
+        "refundable": false,
+        "fare_class": "LCC"
+      },
+      "status": "planned",
+      "depends_on": [
+        "hotel_tokyo"
+      ],
+      "evidence_source": "atlas-flight search 2026-08-27 (Sandbox); original return offer identified. Booking follows the same proven search->verify->order->pay flow; deferred to Qoder GUI rehearsal (Q3 Option C) or task 04."
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "e1",
+      "from_node": "leg1_pvg_nrt",
+      "to_node": "hotel_tokyo",
+      "edge_type": "depends_on",
+      "constraint": {
+        "slack_minutes": null,
+        "hard": false
+      },
+      "note": "Leg1 arrives 21:35 NRT 4 Sep; hotel check-in opens 15:00 4 Sep. Disruption of Leg1 risks missing the non-refundable first night. Slack computed by graph builder (task 04)."
+    },
+    {
+      "edge_id": "e2",
+      "from_node": "hotel_tokyo",
+      "to_node": "leg2_nrt_pvg",
+      "edge_type": "depends_on",
+      "constraint": {
+        "slack_minutes": null,
+        "hard": false
+      },
+      "note": "Hotel checkout 6 Sep 11:00; Leg2 departs 13:55. Tight buffer; a Leg1 cascade that shifts Leg2 risks the return connection."
+    }
+  ],
+  "demo_scenario_notes": {
+    "disruption_type": "typhoon-induced delay/cancellation of Leg1 (ML-forecast, FR-002)",
+    "leg1_replan": "auto-settle <= cap (demo: S$30 = 3000 cents <= 5000); FR-006 audit log",
+    "hotel": "advisory only - drafted notification, no Atlas booking",
+    "leg2_replan": "human approval > cap (demo: S$120 = 12000 cents > 5000); surfaced in UI"
+  }
+}
