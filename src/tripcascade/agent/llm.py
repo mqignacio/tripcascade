@@ -98,7 +98,7 @@ class DashScopeProposalBackend:
     ) -> ReplanProposal:
         # Defer the import so qwen-agent is only required when this backend is used.
         try:
-            from qwen_agent.agents import Assistant  # type: ignore
+            pass  # type: ignore
         except Exception as e:  # pragma: no cover - env-dependent
             logger.warning("qwen-agent unavailable (%s); degrading to StubProposalBackend", e)
             return StubProposalBackend(self.router).propose_replan(node, alternatives, cascade_context)

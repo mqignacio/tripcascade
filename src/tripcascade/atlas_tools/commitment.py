@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from tripcascade.agent.policy import AtlasResult, PolicyEngine, StaleStateError
+from tripcascade.agent.policy import AtlasResult, PolicyEngine
 from tripcascade.graph.models import (
     DecisionStatus,
     Node,

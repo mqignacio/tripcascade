@@ -18,21 +18,21 @@ affects *reasoning* calls only (`skills/model_routing.md` §2.4).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
+from enum import StrEnum
 
 from tripcascade.agent.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
 
-class ModelTier(str, Enum):
+class ModelTier(StrEnum):
     ROUTINE = "routine"
     HARD = "hard"
     FALLBACK = "fallback"
 
 
-class TaskKind(str, Enum):
+class TaskKind(StrEnum):
     # routine (cheap 80%)
     PARSE_INTENT = "parse_intent"
     EXTRACT_ENTITIES = "extract_entities"

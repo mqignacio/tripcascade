@@ -13,25 +13,24 @@ Node classification (`actionable`) is **evidence-based** (`doc/atlas_surface.md`
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
 
 # ---------------------------------------------------------------------------
 # Enums (SPECS §4.1 / §4.3)
 # ---------------------------------------------------------------------------
 
 
-class NodeType(str, Enum):
+class NodeType(StrEnum):
     FLIGHT = "flight"
     HOTEL = "hotel"
     ACTIVITY = "activity"
     TRANSFER = "transfer"
 
 
-class NodeStatus(str, Enum):
+class NodeStatus(StrEnum):
     PLANNED = "planned"
     BOOKED = "booked"  # used by the rehearsal seed (task 02)
     AT_RISK = "at_risk"
@@ -42,13 +41,13 @@ class NodeStatus(str, Enum):
     COMPLETED = "completed"
 
 
-class EdgeType(str, Enum):
+class EdgeType(StrEnum):
     DEPENDS_ON = "depends_on"
     TEMPORAL = "temporal"
     BOOKING = "booking"
 
 
-class ActionType(str, Enum):
+class ActionType(StrEnum):
     RE_BOOK = "re_book"
     CHANGE = "change"
     CANCEL = "cancel"
@@ -56,13 +55,13 @@ class ActionType(str, Enum):
     NOTIFY = "notify"  # advisory nodes only
 
 
-class Outcome(str, Enum):
+class Outcome(StrEnum):
     AUTO_SETTLED = "auto_settled"
     HUMAN_APPROVED = "human_approved"
     HUMAN_REJECTED = "human_rejected"
 
 
-class DecisionStatus(str, Enum):
+class DecisionStatus(StrEnum):
     """Lifecycle of a settlement decision (policy-engine internal)."""
 
     PROPOSED = "proposed"
@@ -299,7 +298,9 @@ class SettlementDecision(BaseModel):
         if self.advisory:
             return "advisory — draft notification, no Atlas write"
         if self.auto_settle:
-            return f"auto-settled under policy — S${self.amount_cents / 100:.0f} ≤ S${self.cap_cents / 100:.0f} cap, logged"
+            amt = self.amount_cents / 100
+            cap = self.cap_cents / 100
+            return f"auto-settled under policy — S${amt:.0f} ≤ S${cap:.0f} cap, logged"
         if self.held:
             return f"approval required — S${self.amount_cents / 100:.0f} > S${self.cap_cents / 100:.0f} cap"
         return self.status.value

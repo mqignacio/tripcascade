@@ -15,23 +15,21 @@ Run: uv run pytest tests/test_agent_core.py -v
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
 from tripcascade.agent.config import Settings
 from tripcascade.agent.decision_log import DecisionLog
-from tripcascade.agent.llm import StubProposalBackend
 from tripcascade.agent.orchestrator import Orchestrator
 from tripcascade.agent.policy import FalseSuccessError, PolicyEngine, StaleStateError
 from tripcascade.agent.router import ModelTier, Router, TaskKind
 from tripcascade.atlas_tools.client import StubAtlasClient
 from tripcascade.atlas_tools.commitment import approve_held, rebook_auto, rebook_held
 from tripcascade.atlas_tools.discovery import search_alternatives
-from tripcascade.graph.builder import build_graph, load_demo_itinerary
+from tripcascade.graph.builder import build_graph
 from tripcascade.graph.cascade import compute_cascade
-from tripcascade.graph.models import Offer, ReplanProposal
+from tripcascade.graph.models import ReplanProposal
 from tripcascade.watcher.events import make_scripted_event, populate_forecast
 
 # --- fixtures ----------------------------------------------------------------
@@ -221,10 +219,6 @@ def test_reread_before_write_prevents_double_pay(stack, graph):
     decision = policy.evaluate_settlement(leg1, prop, alts[0])
     # simulate the new order already paid (a prior retry succeeded) -> order_status.paid=True
     from tripcascade.atlas_tools.client import StatusResult
-    client.order_create = lambda booking_id, passengers: type(client).order_create(
-        client, booking_id, passengers
-    )  # keep real create
-    real_status = client.order_status
     client.order_status = lambda order_no: StatusResult(orderNo=order_no, paid=True, ticket_status="TICKETING_PENDING")
     with pytest.raises(StaleStateError, match="already paid"):
         policy.execute(decision, leg1, prop)
@@ -330,7 +324,7 @@ def test_forecast_populates_disruption_probability(graph):
     """Watcher.populate_forecast writes a float P(disruption) per flight leg."""
     from tripcascade.forecast.inference import predict_disruption_prob
 
-    events = populate_forecast(graph, predict_disruption_prob)
+    populate_forecast(graph, predict_disruption_prob)
     for node in graph.nodes.values():
         if node.node_type.value == "flight":
             assert node.disruption_probability is not None

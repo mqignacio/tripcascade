@@ -134,7 +134,7 @@ class Orchestrator:
                 notif = self.policy.draft_notification(node, impact)
                 result.notifications.append((nid, notif))
                 # record an advisory decision (no money, no Atlas write)
-                from tripcascade.graph.models import ActionType, Outcome
+                from tripcascade.graph.models import ActionType
 
                 adv_dec = SettlementDecision(
                     decision_id=f"dec_{nid}_advisory",

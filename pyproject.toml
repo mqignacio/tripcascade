@@ -5,6 +5,7 @@ description = "Forecast-driven agentic trip re-planning with bounded autonomy (A
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "gradio>=6.26.0",
     "httpx>=0.27",
     "joblib>=1.5.3",
     "numpy>=2.4.6",

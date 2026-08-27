@@ -24,7 +24,6 @@ import logging
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
@@ -218,7 +217,7 @@ class StubAtlasClient:
 
     def order_pay(self, confirmation_id: str) -> PayResult:
         # mark the matching order paid (find by confirmation_id pattern)
-        for order_no, st in self._orders.items():
+        for _order_no, st in self._orders.items():
             if not st.paid:
                 st.paid = True
                 st.ticket_status = "TICKETING_PENDING"
