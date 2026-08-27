@@ -1,0 +1,89 @@
+# Serverless Devs (s) config for the TripCascade Disruption Watcher.
+# Deployed to Alibaba Cloud Function Compute (Python 3.12 runtime).
+#
+# Pre-deploy steps (Mike):
+#   1. Install Serverless Devs: npm i -g @serverless-devs/s
+#   2. Configure credentials: s config add --AccountID <id> --AccessKeyID <ak> --AccessKeySecret <sk>
+#   3. bash deploy/fc_watcher/build_package.sh
+#   4. s deploy -t deploy/fc_watcher/s.yaml
+#
+# Post-deploy:
+#   - set env vars in FC console (ATLAS_SANDBOX_*, AGENT_ENDPOINT_URL, WATCHER_DEMO_MODE=1, etc.)
+#   - register the HTTPS trigger URL with Atlas updateWebhookURL.do (P1 webhook stretch)
+#   - verify: curl <url>/health
+#
+# NOTE: this s.yaml is a template — verify the exact property names against the
+# FC console or the Serverless Devs FC component docs. Console-based deploy is an
+# equally valid path (see doc/deploy_watcher.md §3.2).
+
+edition: 1.0.0
+name: tripcascade-watcher
+access: default
+
+vars:
+  region: ap-southeast-1
+  service:
+    name: tripcascade-watcher
+    description: TripCascade Disruption Watcher — scheduled forecast-poll + Atlas webhook ingest
+
+services:
+  fc_watcher:
+    component: fc
+    props:
+      region: ${vars.region}
+      service: ${vars.service}
+      function:
+        name: watcher
+        runtime: python3.12
+        handler: tripcascade.watcher.fc_function.handler
+        codeUri: ./
+        memorySize: 512
+        timeout: 120
+        environmentVariables:
+          WATCHER_DEMO_MODE: "1"
+          AGENT_ENDPOINT_URL: ""          # FILL IN: agent HTTP service URL
+          ATLAS_SANDBOX_BASE_URL: "https://sandbox.atriptech.com"
+          # Secrets: set in console (never committed). See doc/deploy_watcher.md §2.
+          # ATLAS_SANDBOX_ACCESS_KEY: ""
+          # ATLAS_SANDBOX_SECRET_KEY: ""
+      triggers:
+        - name: timer-scheduled-poll
+          type: timer
+          qualifier: LATEST
+          config:
+            cronExpression: "0 */15 * * * *"   # every 15 min (demo; adjust for production)
+            enable: true
+        - name: http-trigger
+          type: http
+          qualifier: LATEST
+          config:
+            methods: ["GET", "POST"]
+            authType: anonymous
+            disableURLInternet: false
+      # Custom domain / HTTPS: configure in the FC console after deploy.
+      # The HTTP trigger's default domain is adequate for the hackathon demo.
+
+  # ── Optional: agent HTTP service (Option A per doc/deploy_watcher.md §5) ──
+  # Uncomment and deploy as a second FC function if choosing the cloud-to-cloud path:
+  #
+  # fc_agent:
+  #   component: fc
+  #   props:
+  #     region: ${vars.region}
+  #     service:
+  #       name: tripcascade-agent
+  #     function:
+  #       name: agent
+  #       runtime: python3.12
+  #       handler: tripcascade.agent.http_service.handler
+  #       codeUri: ./
+  #       memorySize: 256
+  #       timeout: 60
+  #       environmentVariables:
+  #         TRIPCASCADE_LLM_BACKEND: "stub"
+  #     triggers:
+  #       - name: defaultHttpTrigger
+  #         type: http
+  #         config:
+  #           methods: ["GET", "POST"]
+  #           authType: anonymous
