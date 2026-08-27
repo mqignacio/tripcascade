@@ -155,7 +155,10 @@ cython_debug/
 # Mac OS X
 **/.DS_Store
 
-# Data files
+# Data files (never commit raw datasets)
+data/
+*.csv
+*.zip
 C-MAPSS/
 N-CMAPSS/
 *.h5

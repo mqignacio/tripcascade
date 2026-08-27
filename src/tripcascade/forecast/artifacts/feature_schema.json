@@ -1,0 +1,36 @@
+{
+  "feature_names": [
+    "dep_hour",
+    "dep_hour_bucket",
+    "day_of_week",
+    "month",
+    "season",
+    "is_weekend",
+    "block_time",
+    "block_time_bucket",
+    "carrier_te",
+    "route_te"
+  ],
+  "disruption_definition": "DepDelay >= 15 OR Cancelled == 1 OR Diverted == 1",
+  "alert_threshold": 0.35000000000000003,
+  "training_source": "US DOT BTS On-Time Performance, 2024 Jan-Jun",
+  "license": "Public domain (US Government work)",
+  "held_out_carriers": [
+    "WN",
+    "DL",
+    "AA"
+  ],
+  "xgb_params": {
+    "n_estimators": 200,
+    "max_depth": 6,
+    "learning_rate": 0.1,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_alpha": 0.1,
+    "reg_lambda": 1.0,
+    "objective": "binary:logistic",
+    "eval_metric": "auc",
+    "n_jobs": -1,
+    "random_state": 42
+  }
+}
