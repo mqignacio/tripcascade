@@ -331,6 +331,51 @@ def test_forecast_populates_disruption_probability(graph):
             assert 0.0 <= node.disruption_probability <= 1.0
 
 
+# --- live DashScope (real Qwen) proposal backend (skipped if no key / stub mode) ---
+
+
+def test_real_qwen_proposal_backend():
+    """FR-009: with a real DASHSCOPE_API_KEY + llm_backend=dashscope, the real Qwen model
+    proposes an alternative (records model_tier_used = the paid HARD tier, not fallback).
+
+    Skipped if no key is set or backend is 'stub' (the default demo/test mode).
+    """
+    import os
+
+    from tripcascade.agent.config import load_env_file
+
+    load_env_file()  # load .env so the key is in os.environ
+    key = os.environ.get("DASHSCOPE_API_KEY", "")
+    backend_mode = os.environ.get("TRIPCASCADE_LLM_BACKEND", "stub")
+    if not key or backend_mode == "stub":
+        pytest.skip("no DASHSCOPE_API_KEY or llm_backend=stub (real Qwen not exercised)")
+
+    from tripcascade.agent.llm import DashScopeProposalBackend
+    from tripcascade.agent.router import Router, TaskKind
+    from tripcascade.atlas_tools.client import StubAtlasClient
+    from tripcascade.atlas_tools.discovery import search_alternatives
+
+    s = _settings(dashscope_api_key=key, llm_backend="dashscope")
+    router = Router(s)
+    assert router.is_paid_available()
+    backend = DashScopeProposalBackend(router)
+    graph = build_graph(DEMO_SEED)
+    leg1 = graph.get_node("leg1_pvg_nrt")
+    adults, children = _pax(graph)
+    alts = search_alternatives(StubAtlasClient(s), leg1, adults, children)
+
+    # route the proposal (HARD tier) + make the real Qwen call
+    proposal = backend.propose_replan(leg1, alts, "cascade: leg1 at_risk -> hotel, leg2 affected")
+
+    # the LLM chose a real offer from the alternatives
+    assert proposal.chosen_offer_id in {o.offer_id for o in alts}
+    # the fare difference is deterministic (computed from prices, not by the LLM)
+    assert proposal.fare_difference_cents == 3000  # stub offer 516.68 - original 486.68
+    # model_tier_used reflects the paid HARD tier, not the local-open-weight fallback
+    assert proposal.model_tier_used == s.hard_model  # Qwen3.8-Max
+    assert not router.route(TaskKind.REPLAN_PROPOSAL).fallback_used
+
+
 # --- live Atlas Sandbox (skipped if CLI not authed) -------------------------
 
 

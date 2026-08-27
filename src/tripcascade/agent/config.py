@@ -69,7 +69,8 @@ class Settings:
     alert_threshold: float = 0.35  # from forecast artifacts (tasks/03-data_ml)
 
     # --- LLM backend selection ---
-    dashscope_api_key: str = ""  # optional; enables real Qwen calls via qwen-agent
+    dashscope_api_key: str = ""  # optional; enables real Qwen calls via the OpenAI-compat endpoint
+    dashscope_base_url: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     llm_backend: str = "stub"    # "stub" (default/demo/tests) | "dashscope" | "local"
 
     # --- Orchestrator loop safety (cure for infinite-loop) ---
@@ -131,6 +132,9 @@ def get_settings() -> Settings:
         atlas_incident_path=os.environ.get("ATLAS_INCIDENT_PATH", "/event/getPageList.do"),
         alert_threshold=_env_float("ALERT_THRESHOLD", 0.35),
         dashscope_api_key=os.environ.get("DASHSCOPE_API_KEY", ""),
+        dashscope_base_url=os.environ.get(
+            "DASHSCOPE_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+        ),
         llm_backend=os.environ.get("TRIPCASCADE_LLM_BACKEND", "stub") or "stub",
         step_budget=_env_int("TRIPCASCADE_STEP_BUDGET", 12),
         give_up_after=_env_int("TRIPCASCADE_GIVE_UP_AFTER", 12),
