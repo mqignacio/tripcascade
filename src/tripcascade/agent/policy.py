@@ -192,6 +192,11 @@ class PolicyEngine:
         if not order.orderNo:
             raise FalseSuccessError("order create returned ok but orderNo is empty")
 
+        # 3b. re-read before pay: confirm the NEW order is unpaid (no double-pay)
+        pre_pay = self.client.order_status(order.orderNo)
+        if pre_pay.paid:
+            raise StaleStateError(f"order {order.orderNo} already paid; double-pay prevented")
+
         # 4. order pay (Money) -> assert confirmation_id
         pay = self.client.order_pay(order.payment_confirmation_id or "")
         if not pay.success or not pay.payment_confirmation_id:
@@ -318,14 +323,6 @@ class PolicyEngine:
                 raise StaleStateError(
                     f"fare changed between proposal ({decision.new_fare_cents}c) and "
                     f"execution ({live_cents}c); re-plan required"
-                )
-        # if the node already has an order, confirm it is unpaid (no double-pay)
-        ref = node.atlas_entity_ref
-        if ref and ref.orderNo:
-            st = self.client.order_status(ref.orderNo)
-            if st.paid:
-                raise StaleStateError(
-                    f"order {ref.orderNo} is already paid; double-pay prevented"
                 )
 
     def _record(
