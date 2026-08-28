@@ -13,7 +13,7 @@ Node classification (`actionable`) is **evidence-based** (`doc/atlas_surface.md`
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -23,14 +23,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # ---------------------------------------------------------------------------
 
 
-class NodeType(StrEnum):
+class NodeType(str, Enum):
     FLIGHT = "flight"
     HOTEL = "hotel"
     ACTIVITY = "activity"
     TRANSFER = "transfer"
 
 
-class NodeStatus(StrEnum):
+class NodeStatus(str, Enum):
     PLANNED = "planned"
     BOOKED = "booked"  # used by the rehearsal seed (task 02)
     AT_RISK = "at_risk"
@@ -41,13 +41,13 @@ class NodeStatus(StrEnum):
     COMPLETED = "completed"
 
 
-class EdgeType(StrEnum):
+class EdgeType(str, Enum):
     DEPENDS_ON = "depends_on"
     TEMPORAL = "temporal"
     BOOKING = "booking"
 
 
-class ActionType(StrEnum):
+class ActionType(str, Enum):
     RE_BOOK = "re_book"
     CHANGE = "change"
     CANCEL = "cancel"
@@ -55,13 +55,13 @@ class ActionType(StrEnum):
     NOTIFY = "notify"  # advisory nodes only
 
 
-class Outcome(StrEnum):
+class Outcome(str, Enum):
     AUTO_SETTLED = "auto_settled"
     HUMAN_APPROVED = "human_approved"
     HUMAN_REJECTED = "human_rejected"
 
 
-class DecisionStatus(StrEnum):
+class DecisionStatus(str, Enum):
     """Lifecycle of a settlement decision (policy-engine internal)."""
 
     PROPOSED = "proposed"

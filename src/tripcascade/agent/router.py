@@ -19,20 +19,20 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 
 from tripcascade.agent.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
 
-class ModelTier(StrEnum):
+class ModelTier(str, Enum):
     ROUTINE = "routine"
     HARD = "hard"
     FALLBACK = "fallback"
 
 
-class TaskKind(StrEnum):
+class TaskKind(str, Enum):
     # routine (cheap 80%)
     PARSE_INTENT = "parse_intent"
     EXTRACT_ENTITIES = "extract_entities"
