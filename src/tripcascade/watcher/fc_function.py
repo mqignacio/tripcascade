@@ -287,8 +287,9 @@ def http_event_handler(event: Any, context: Any = None) -> str:
 def _parse_fc_http_event(event: Any) -> dict:
     """Normalize an FC HTTP-trigger event into {method, path, body}.
 
-    Defensive: handles dict | JSON-str | bytes, and multiple FC event schemas
-    (``method``/``httpMethod``, ``path``/``url``, requestContext.http.*).
+    FC 3.0 fcapp.run passes a WSGI environ dict (keys: REQUEST_METHOD,
+    PATH_INFO, wsgi.input, CONTENT_LENGTH). Handles WSGI + the event-function
+    schemas (method/httpMethod, path/url, requestContext.http.*) as fallbacks.
     """
     if isinstance(event, (bytes, bytearray)):
         event = event.decode(errors="replace")
@@ -300,6 +301,22 @@ def _parse_fc_http_event(event: Any) -> dict:
     if not isinstance(event, dict):
         event = {}
 
+    # WSGI environ (FC 3.0 fcapp.run standard HTTP trigger)
+    if "REQUEST_METHOD" in event or "wsgi.input" in event:
+        method = event.get("REQUEST_METHOD", "GET")
+        path = event.get("PATH_INFO", "/")
+        body = ""
+        content_length = int(event.get("CONTENT_LENGTH", 0) or 0)
+        if content_length > 0:
+            fp = event.get("wsgi.input")
+            if fp is not None:
+                try:
+                    body = fp.read(content_length).decode(errors="replace")
+                except Exception:
+                    body = ""
+        return {"method": method, "path": path, "body": body}
+
+    # Event-function schemas (fallback)
     rc = event.get("requestContext", {}) or {}
     rc_http = rc.get("http", {}) or {}
     method = (

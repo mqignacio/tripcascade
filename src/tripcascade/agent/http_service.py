@@ -135,20 +135,31 @@ def fc_http_handler(event: Any, context: Any = None) -> str:
     path = evt["path"]
     logger.info("fc_http_handler: raw_event_type=%s parsed_method=%s parsed_path=%s",
                type(event).__name__, method, path)
-    # DEBUG: return raw event + parsed values so we can see FC's event schema.
-    # Remove this debug block once the parsing is confirmed.
-    raw_for_debug = event if not isinstance(event, (bytes, bytearray)) else event.decode(errors="replace")
-    if isinstance(raw_for_debug, str):
+
+    if method == "GET" and path in ("/", "/health"):
+        return json.dumps({"status": "ok", "product": "TripCascade"})
+
+    if method == "POST" and path == "/disruption":
         try:
-            raw_for_debug = json.loads(raw_for_debug)
-        except Exception:
-            pass
-    debug_info = {"_debug": True, "raw_event": raw_for_debug, "parsed": evt, "method": method, "path": path}
-    return json.dumps(debug_info, default=str)
+            body = json.loads(evt["body"]) if evt["body"] else {}
+        except json.JSONDecodeError:
+            return json.dumps({"error": "invalid JSON body"})
+        event_obj = DisruptionEvent(**body) if body.get("node_id") else None
+        if event_obj is None:
+            return json.dumps({"error": "missing or invalid DisruptionEvent body"})
+        result = _orchestrator_handle(event_obj)
+        return json.dumps(result, default=str)
+
+    return json.dumps({"error": "not found"})
 
 
 def _parse_fc_http_event(event: Any) -> dict:
-    """Normalize an FC HTTP-trigger event into {method, path, body}."""
+    """Normalize an FC HTTP-trigger event into {method, path, body}.
+
+    FC 3.0 fcapp.run passes a WSGI environ dict (keys: REQUEST_METHOD,
+    PATH_INFO, wsgi.input, CONTENT_LENGTH). Handles WSGI + the event-function
+    schemas (method/httpMethod, path/url, requestContext.http.*) as fallbacks.
+    """
     if isinstance(event, (bytes, bytearray)):
         event = event.decode(errors="replace")
     if isinstance(event, str):
@@ -158,6 +169,23 @@ def _parse_fc_http_event(event: Any) -> dict:
             event = {}
     if not isinstance(event, dict):
         event = {}
+
+    # WSGI environ (FC 3.0 fcapp.run standard HTTP trigger)
+    if "REQUEST_METHOD" in event or "wsgi.input" in event:
+        method = event.get("REQUEST_METHOD", "GET")
+        path = event.get("PATH_INFO", "/")
+        body = ""
+        content_length = int(event.get("CONTENT_LENGTH", 0) or 0)
+        if content_length > 0:
+            fp = event.get("wsgi.input")
+            if fp is not None:
+                try:
+                    body = fp.read(content_length).decode(errors="replace")
+                except Exception:
+                    body = ""
+        return {"method": method, "path": path, "body": body}
+
+    # Event-function schemas (fallback)
     rc = event.get("requestContext", {}) or {}
     rc_http = rc.get("http", {}) or {}
     method = (

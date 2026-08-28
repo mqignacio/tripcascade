@@ -246,3 +246,25 @@ class TestFCHTTPEventHandler:
         """An empty/garbage event defaults to GET / -> health."""
         result = http_event_handler({})
         assert json.loads(result)["status"] == "ok"  # GET / = health
+
+    def test_wsgi_environ_health(self):
+        """FC 3.0 fcapp.run passes a WSGI environ (REQUEST_METHOD, PATH_INFO)."""
+        environ = {"REQUEST_METHOD": "GET", "PATH_INFO": "/health", "CONTENT_LENGTH": "0"}
+        result = http_event_handler(environ)
+        assert json.loads(result)["status"] == "ok"
+
+    def test_wsgi_environ_post(self, monkeypatch):
+        """WSGI environ POST /webhook with a disruption event."""
+        body = b'{"eventType":"abnormal.cancelled","orderNo":"T123"}'
+        environ = {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/webhook",
+            "CONTENT_LENGTH": str(len(body)),
+            "wsgi.input": MagicMock(read=MagicMock(return_value=body)),
+        }
+        mock_post = MagicMock(return_value={"status": "ok", "decisions": []})
+        monkeypatch.setattr("tripcascade.watcher.agent_client.post_disruption", mock_post)
+        result = http_event_handler(environ)
+        payload = json.loads(result)
+        assert payload["status"] == "dispatched"
+        mock_post.assert_called_once()
