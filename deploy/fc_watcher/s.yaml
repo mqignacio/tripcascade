@@ -1,20 +1,20 @@
 # Serverless Devs (s) config for the TripCascade Disruption Watcher.
-# Deployed to Alibaba Cloud Function Compute (Python 3.12 runtime).
+# Deployed to Alibaba Cloud Function Compute (Python 3.10 runtime).
+#
+# FC does NOT allow HTTP + Timer triggers on the same function, so the Watcher
+# deploys as TWO functions under ONE service (both share the same code package):
+#   - watcher-poll : Timer trigger (P0 scheduled forecast-poll)
+#   - watcher-http : HTTP trigger (GET /health + POST /webhook ingest)
 #
 # Pre-deploy steps (Mike):
-#   1. Install Serverless Devs: npm i -g @serverless-devs/s
-#   2. Configure credentials: s config add --AccountID <id> --AccessKeyID <ak> --AccessKeySecret <sk>
-#   3. bash deploy/fc_watcher/build_package.sh
-#   4. s deploy -t deploy/fc_watcher/s.yaml
+#   1. s config add (AccountID + AccessKeyID + AccessKeySecret) — already done
+#   2. bash deploy/fc_watcher/build_package.sh
+#   3. s deploy -t deploy/fc_watcher/s.yaml
 #
 # Post-deploy:
-#   - set env vars in FC console (ATLAS_SANDBOX_*, AGENT_ENDPOINT_URL, WATCHER_DEMO_MODE=1, etc.)
-#   - register the HTTPS trigger URL with Atlas updateWebhookURL.do (P1 webhook stretch)
-#   - verify: curl <url>/health
-#
-# NOTE: this s.yaml is a template — verify the exact property names against the
-# FC console or the Serverless Devs FC component docs. Console-based deploy is an
-# equally valid path (see doc/deploy_watcher.md §3.2).
+#   - set env vars in FC console for BOTH functions (ATLAS_SANDBOX_*, AGENT_ENDPOINT_URL)
+#   - verify: curl <watcher-http-url>/health  -> 200
+#   - register the watcher-http URL with Atlas updateWebhookURL.do (P1 webhook stretch)
 
 edition: 1.0.0
 name: tripcascade-watcher
@@ -27,13 +27,14 @@ vars:
     description: TripCascade Disruption Watcher — scheduled forecast-poll + Atlas webhook ingest
 
 services:
-  fc_watcher:
+  # ── P0: scheduled forecast-poll (Timer trigger) ──
+  watcher-poll:
     component: fc
     props:
       region: ${vars.region}
       service: ${vars.service}
       function:
-        name: watcher
+        name: watcher-poll
         runtime: python3.10
         handler: tripcascade.watcher.fc_function.handler
         codeUri: ./
@@ -53,6 +54,27 @@ services:
           config:
             cronExpression: "0 */15 * * * *"   # every 15 min (demo; adjust for production)
             enable: true
+
+  # ── health check + Atlas webhook ingest (HTTP trigger) ──
+  watcher-http:
+    component: fc
+    props:
+      region: ${vars.region}
+      service: ${vars.service}
+      function:
+        name: watcher-http
+        runtime: python3.10
+        handler: tripcascade.watcher.fc_function.http_event_handler
+        codeUri: ./
+        memorySize: 512
+        timeout: 60
+        environmentVariables:
+          WATCHER_DEMO_MODE: "1"
+          AGENT_ENDPOINT_URL: ""          # FILL IN: agent HTTP service URL
+          ATLAS_SANDBOX_BASE_URL: "https://sandbox.atriptech.com"
+          # ATLAS_SANDBOX_ACCESS_KEY: ""
+          # ATLAS_SANDBOX_SECRET_KEY: ""
+      triggers:
         - name: http-trigger
           type: http
           qualifier: LATEST
@@ -60,18 +82,20 @@ services:
             methods: ["GET", "POST"]
             authType: anonymous
             disableURLInternet: false
-      # Custom domain / HTTPS: configure in the FC console after deploy.
-      # The HTTP trigger's default domain is adequate for the hackathon demo.
+      # Custom domain / HTTPS: the HTTP trigger's default domain is adequate
+      # for the hackathon demo. Configure a custom domain in the FC console if needed.
 
   # ── Optional: agent HTTP service (Option A per doc/deploy_watcher.md §5) ──
-  # Uncomment and deploy as a second FC function if choosing the cloud-to-cloud path:
+  # Uncomment and deploy as a third FC function if choosing the cloud-to-cloud path.
+  # The agent stays local + tunnel (Option B) if you prefer "one cloud service".
   #
-  # fc_agent:
+  # agent:
   #   component: fc
   #   props:
   #     region: ${vars.region}
   #     service:
   #       name: tripcascade-agent
+  #       description: TripCascade agent HTTP service (invoked by the watcher)
   #     function:
   #       name: agent
   #       runtime: python3.10
@@ -82,8 +106,9 @@ services:
   #       environmentVariables:
   #         TRIPCASCADE_LLM_BACKEND: "stub"
   #     triggers:
-  #       - name: defaultHttpTrigger
+  #       - name: http-trigger
   #         type: http
+  #         qualifier: LATEST
   #         config:
   #           methods: ["GET", "POST"]
   #           authType: anonymous

@@ -23,6 +23,7 @@ from tripcascade.watcher.fc_function import (
     SCRIPTED_DEMO_NODE,
     SCRIPTED_DEMO_P,
     dispatch,
+    http_event_handler,
     http_handler,
 )
 
@@ -183,3 +184,59 @@ class TestWSGIAdapter:
             status.append(s)
         body = http_handler(environ, start_response)
         assert status[0].startswith("200")  # empty body = ignored, 200
+
+
+class TestFCHTTPEventHandler:
+    """Tests for the FC event-function HTTP trigger adapter (http_event_handler)."""
+
+    def test_health_dict_event(self):
+        """FC passes the HTTP request as a dict event."""
+        result = http_event_handler({"method": "GET", "path": "/health"})
+        assert result["statusCode"] == 200
+        payload = json.loads(result["body"])
+        assert payload["status"] == "ok"
+        assert result["isBase64Encoded"] is False
+        assert result["headers"]["Content-Type"] == "application/json"
+
+    def test_health_json_str_event(self):
+        """FC may pass the event as a JSON string."""
+        result = http_event_handler('{"method":"GET","path":"/health"}')
+        assert result["statusCode"] == 200
+
+    def test_health_bytes_event(self):
+        """FC may pass the event as bytes."""
+        result = http_event_handler(b'{"method":"GET","path":"/health"}')
+        assert result["statusCode"] == 200
+
+    def test_httpmethod_key_schema(self):
+        """Handle the 'httpMethod' key variant."""
+        result = http_event_handler({"httpMethod": "GET", "path": "/health"})
+        assert result["statusCode"] == 200
+
+    def test_request_context_schema(self):
+        """Handle the requestContext.http.* nested schema."""
+        result = http_event_handler({
+            "requestContext": {"http": {"method": "GET", "path": "/health"}}
+        })
+        assert result["statusCode"] == 200
+
+    def test_404(self):
+        result = http_event_handler({"method": "GET", "path": "/nope"})
+        assert result["statusCode"] == 404
+
+    def test_webhook_post(self, monkeypatch):
+        """Webhook POST with a disruption event dispatches to agent."""
+        mock_post = MagicMock(return_value={"status": "ok", "decisions": []})
+        monkeypatch.setattr("tripcascade.watcher.fc_function.post_disruption", mock_post)
+        result = http_event_handler({
+            "method": "POST",
+            "path": "/webhook",
+            "body": '{"eventType":"abnormal.cancelled","orderNo":"T123"}',
+        })
+        assert result["statusCode"] == 202
+        mock_post.assert_called_once()
+
+    def test_empty_event_defaults(self):
+        """An empty/garbage event defaults to GET / -> health."""
+        result = http_event_handler({})
+        assert result["statusCode"] == 200  # GET / = health
