@@ -17,9 +17,20 @@ from tripcascade.graph.models import Edge, ItineraryGraph, Node
 
 logger = logging.getLogger(__name__)
 
-# Repo root = .../src/tripcascade/graph/builder.py -> parents[3]
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_SEED = REPO_ROOT / "assets" / "demo_itinerary.json"
+# Locate the demo itinerary seed. Search upward from this file for an `assets/`
+# directory so it works both in the dev repo (src/tripcascade/graph/builder.py
+# -> <repo>/assets/) AND on Alibaba Cloud FC (code at /code/tripcascade/...
+# -> /code/assets/).
+def _find_seed() -> Path:
+    here = Path(__file__).resolve()
+    for parent in [here.parent, *here.parents]:
+        candidate = parent / "assets" / "demo_itinerary.json"
+        if candidate.exists():
+            return candidate
+    # Fallback: the dev-repo-relative path (parents[3] on a normal checkout).
+    return here.parents[3] / "assets" / "demo_itinerary.json"
+
+DEFAULT_SEED = _find_seed()
 
 
 def compute_edge_slack(edge: Edge, graph: ItineraryGraph) -> int | None:
