@@ -42,7 +42,7 @@ services:
         timeout: 120
         environmentVariables:
           WATCHER_DEMO_MODE: "1"
-          AGENT_ENDPOINT_URL: ""          # FILL IN: agent HTTP service URL
+          AGENT_ENDPOINT_URL: "https://agent-tripcasde-agent-cvhaldalmf.ap-southeast-1.fcapp.run" # FILL IN: agent HTTP service URL
           ATLAS_SANDBOX_BASE_URL: "https://sandbox.atriptech.com"
           # Secrets: set in console (never committed). See doc/deploy_watcher.md §2.
           # ATLAS_SANDBOX_ACCESS_KEY: ""
@@ -70,7 +70,7 @@ services:
         timeout: 60
         environmentVariables:
           WATCHER_DEMO_MODE: "1"
-          AGENT_ENDPOINT_URL: ""          # FILL IN: agent HTTP service URL
+          AGENT_ENDPOINT_URL: "https://agent-tripcasde-agent-cvhaldalmf.ap-southeast-1.fcapp.run" # FILL IN: agent HTTP service URL
           ATLAS_SANDBOX_BASE_URL: "https://sandbox.atriptech.com"
           # ATLAS_SANDBOX_ACCESS_KEY: ""
           # ATLAS_SANDBOX_SECRET_KEY: ""
