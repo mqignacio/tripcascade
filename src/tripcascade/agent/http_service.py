@@ -140,35 +140,29 @@ def fc_http_handler(event: Any, context: Any = None) -> str:
         return json.dumps({"status": "ok", "product": "TripCascade"})
 
     if method == "POST" and path == "/disruption":
-        # DIAGNOSTIC: dump all WSGI environ keys + values to find the body.
-        # Remove once the body-reading path is confirmed.
-        if isinstance(event, dict):
-            safe_env = {}
-            for k, v in event.items():
-                if k == "wsgi.input":
+        # FC 3.0 fcapp.run WSGI does not reliably deliver the request body via
+        # wsgi.input (CONTENT_LENGTH=0, data_len=0 even when a body was sent).
+        # Workaround: accept the event as a base64-JSON query param "event",
+        # OR fall back to wsgi.input if present.
+        import base64
+        body_str = evt["body"]
+        if not body_str:
+            qs = event.get("QUERY_STRING", "")
+            if qs:
+                import urllib.parse as _up
+                params = _up.parse_qs(qs)
+                if "event" in params:
                     try:
-                        pos = v.tell() if hasattr(v, "tell") else None
-                        data = v.read() if hasattr(v, "read") else None
-                        if pos is not None:
-                            try:
-                                v.seek(pos)
-                            except Exception:
-                                pass
-                        safe_env[k] = {"pos_before": pos, "data_len": len(data) if data else 0, "data": (data.decode(errors="replace")[:500] if data else None)}
-                    except Exception as e:
-                        safe_env[k] = f"<read error: {e}>"
-                elif isinstance(v, (str, int, float)) or v is None:
-                    safe_env[k] = v
-                else:
-                    safe_env[k] = f"<{type(v).__name__}>"
-            return json.dumps({"_diag": "full environ dump", "parsed_evt": evt, "environ": safe_env}, default=str)
+                        body_str = base64.b64decode(params["event"][0]).decode(errors="replace")
+                    except Exception:
+                        body_str = params["event"][0]
         try:
-            body = json.loads(evt["body"]) if evt["body"] else {}
+            body = json.loads(body_str) if body_str else {}
         except json.JSONDecodeError:
-            return json.dumps({"error": "invalid JSON body", "raw_body": evt["body"][:200]})
+            return json.dumps({"error": "invalid JSON body", "raw_body": (body_str or "")[:200]})
         event_obj = DisruptionEvent(**body) if body.get("node_id") else None
         if event_obj is None:
-            return json.dumps({"error": "missing or invalid DisruptionEvent body", "parsed": evt})
+            return json.dumps({"error": "missing or invalid DisruptionEvent body", "parsed": evt, "body_str": (body_str or "")[:200]})
         result = _orchestrator_handle(event_obj)
         return json.dumps(result, default=str)
 
@@ -196,6 +190,7 @@ def _parse_fc_http_event(event: Any) -> dict:
     if "REQUEST_METHOD" in event or "wsgi.input" in event:
         method = event.get("REQUEST_METHOD", "GET")
         path = event.get("PATH_INFO", "/")
+        query_string = event.get("QUERY_STRING", "")
         body = ""
         fp = event.get("wsgi.input")
         if fp is not None and method in ("POST", "PUT", "PATCH"):
@@ -217,7 +212,7 @@ def _parse_fc_http_event(event: Any) -> dict:
                         pass
             except Exception:
                 body = ""
-        return {"method": method, "path": path, "body": body}
+        return {"method": method, "path": path, "body": body, "query_string": query_string}
 
     # Event-function schemas (fallback)
     rc = event.get("requestContext", {}) or {}

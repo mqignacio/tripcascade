@@ -33,6 +33,11 @@ def get_watcher_demo_mode() -> bool:
 def post_disruption(disruption_event: dict, *, timeout: float = 30.0) -> dict:
     """POST a `disruption_likely` event to the agent endpoint.
 
+    FC 3.0 fcapp.run WSGI HTTP triggers strip the request body (CONTENT_LENGTH=0,
+    wsgi.input empty). As a workaround, the event is sent BOTH as the JSON body
+    AND as a base64-encoded ``event`` query parameter. The agent reads the
+    query param if the body is empty.
+
     Args:
         disruption_event: dict matching the `DisruptionEvent` schema.
         timeout: request timeout in seconds.
@@ -41,14 +46,20 @@ def post_disruption(disruption_event: dict, *, timeout: float = 30.0) -> dict:
         parsed JSON response from the agent.
 
     Raises:
-        RuntimeError: on non-200 / connection failure (caller decides whether to
-        retry, log, or give-up).
+        RuntimeError: on non-200 / connection failure.
     """
-    url = f"{get_agent_endpoint()}/disruption"
+    import base64
+    import urllib.parse as up
+
+    endpoint = get_agent_endpoint()
+    url = f"{endpoint}/disruption"
     logger.info("POST %s -> %s", disruption_event.get("node_id"), url)
-    data = json.dumps(disruption_event, default=str).encode("utf-8")
+    body_json = json.dumps(disruption_event, default=str)
+    event_b64 = base64.b64encode(body_json.encode("utf-8")).decode("ascii")
+    url_with_qs = f"{url}?event={up.quote(event_b64)}"
+    data = body_json.encode("utf-8")
     req = urllib.request.Request(
-        url,
+        url_with_qs,
         data=data,
         headers={"Content-Type": "application/json"},
         method="POST",
