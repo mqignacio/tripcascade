@@ -22,6 +22,15 @@ echo "=== Stripping __pycache__ ==="
 find "$DEST/tripcascade" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 find "$DEST/tripcascade" -type f -name '.DS_Store' -delete 2>/dev/null || true
 
+echo "=== Bundling pydantic (linux x86_64, python3.10) for FC ==="
+# FC 3.0 fcapp.run does not auto-install requirements.txt. Bundle the one
+# essential dep (pydantic) as pre-built manylinux wheels targeting the FC
+# runtime (python3.10, linux x86_64). httpx is lazy-imported (not needed by
+# StubAtlasClient); the forecast uses heuristic fallback if joblib is absent.
+# Uses system python3's pip (uv venvs don't include pip).
+python3 -m pip install --platform manylinux2014_x86_64 --python-version 3.10 \
+    --only-binary=:all: --target "$DEST" pydantic 2>&1 | tail -3
+
 echo "=== Package contents ==="
 find "$DEST" -type f | sort
 echo "=== Done ==="

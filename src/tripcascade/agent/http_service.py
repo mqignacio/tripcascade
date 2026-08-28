@@ -120,5 +120,73 @@ def main() -> None:
     print("\nshutdown")
 
 
+# ─── Alibaba Cloud FC HTTP-trigger entry point ──────────────────
+
+def fc_http_handler(event: Any, context: Any = None) -> str:
+    """FC HTTP-trigger entry point for the agent service.
+
+    FC 3.0 fcapp.run serves the return value verbatim as the body, so we return
+    a JSON string. Handles GET /health + POST /disruption.
+    Reuses the same event-parsing logic as the watcher's http_event_handler.
+    """
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    evt = _parse_fc_http_event(event)
+    method = evt["method"].upper()
+    path = evt["path"]
+
+    if method == "GET" and path in ("/", "/health"):
+        return json.dumps({"status": "ok", "product": "TripCascade"})
+
+    if method == "POST" and path == "/disruption":
+        try:
+            body = json.loads(evt["body"]) if evt["body"] else {}
+        except json.JSONDecodeError:
+            return json.dumps({"error": "invalid JSON body"})
+        event_obj = DisruptionEvent(**body) if body.get("node_id") else None
+        if event_obj is None:
+            return json.dumps({"error": "missing or invalid DisruptionEvent body"})
+        result = _orchestrator_handle(event_obj)
+        return json.dumps(result, default=str)
+
+    return json.dumps({"error": "not found"})
+
+
+def _parse_fc_http_event(event: Any) -> dict:
+    """Normalize an FC HTTP-trigger event into {method, path, body}."""
+    if isinstance(event, (bytes, bytearray)):
+        event = event.decode(errors="replace")
+    if isinstance(event, str):
+        try:
+            event = json.loads(event)
+        except json.JSONDecodeError:
+            event = {}
+    if not isinstance(event, dict):
+        event = {}
+    rc = event.get("requestContext", {}) or {}
+    rc_http = rc.get("http", {}) or {}
+    method = (
+        event.get("method")
+        or event.get("httpMethod")
+        or rc_http.get("method")
+        or event.get("requestMethod")
+        or "GET"
+    )
+    path = (
+        event.get("path")
+        or event.get("url")
+        or rc_http.get("path")
+        or event.get("requestPath")
+        or "/"
+    )
+    body = event.get("body") or event.get("rawBody") or ""
+    if event.get("isBase64Encoded") and body:
+        import base64
+        try:
+            body = base64.b64decode(body).decode(errors="replace")
+        except Exception:
+            pass
+    return {"method": method, "path": path, "body": body}
+
+
 if __name__ == "__main__":
     main()

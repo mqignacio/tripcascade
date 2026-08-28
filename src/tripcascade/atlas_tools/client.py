@@ -26,8 +26,6 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-import httpx
-
 from tripcascade.agent.config import Settings, get_settings
 from tripcascade.graph.models import Offer
 
@@ -413,6 +411,7 @@ class RestClient:
     def query_incidents(self, page_size: int = 5) -> list[dict]:
         url = self.settings.atlas_sandbox_base_url + self.settings.atlas_incident_path
         body = {"pageNo": 1, "pageSize": page_size}
+        import httpx
         with httpx.Client(timeout=30) as client:
             resp = client.post(url, headers=self._headers(), json=body)
             resp.raise_for_status()

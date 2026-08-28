@@ -33,8 +33,6 @@ import logging
 import re
 from typing import Protocol
 
-import httpx
-
 from tripcascade.agent.router import Router, TaskKind
 from tripcascade.graph.models import Node, Offer, ReplanProposal
 
@@ -157,6 +155,7 @@ class DashScopeProposalBackend:
             "temperature": 0.2,
         }
         try:
+            import httpx
             with httpx.Client(timeout=90) as client:
                 resp = client.post(
                     f"{s.dashscope_base_url}/chat/completions", headers=headers, json=payload

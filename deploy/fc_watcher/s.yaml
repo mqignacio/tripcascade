@@ -85,30 +85,31 @@ services:
       # Custom domain / HTTPS: the HTTP trigger's default domain is adequate
       # for the hackathon demo. Configure a custom domain in the FC console if needed.
 
-  # ── Optional: agent HTTP service (Option A per doc/deploy_watcher.md §5) ──
-  # Uncomment and deploy as a third FC function if choosing the cloud-to-cloud path.
-  # The agent stays local + tunnel (Option B) if you prefer "one cloud service".
+  # ── Agent HTTP service (Option A: cloud-to-cloud) ──
+  # Deployed as a third FC function. The watcher POSTs disruption events here.
+  # Bundled with pydantic (the one essential dep; httpx is lazy-imported).
   #
-  # agent:
-  #   component: fc
-  #   props:
-  #     region: ${vars.region}
-  #     service:
-  #       name: tripcascade-agent
-  #       description: TripCascade agent HTTP service (invoked by the watcher)
-  #     function:
-  #       name: agent
-  #       runtime: python3.10
-  #       handler: tripcascade.agent.http_service.handler
-  #       codeUri: ./
-  #       memorySize: 256
-  #       timeout: 60
-  #       environmentVariables:
-  #         TRIPCASCADE_LLM_BACKEND: "stub"
-  #     triggers:
-  #       - name: http-trigger
-  #         type: http
-  #         qualifier: LATEST
-  #         config:
-  #           methods: ["GET", "POST"]
-  #           authType: anonymous
+  agent:
+    component: fc
+    props:
+      region: ${vars.region}
+      service:
+        name: tripcascade-agent
+        description: TripCascade agent HTTP service (invoked by the watcher)
+      function:
+        name: agent
+        runtime: python3.10
+        handler: tripcascade.agent.http_service.fc_http_handler
+        codeUri: ./
+        memorySize: 512
+        timeout: 60
+        environmentVariables:
+          TRIPCASCADE_LLM_BACKEND: "stub"
+          SETTLEMENT_CAP_CENTS: "5000"
+      triggers:
+        - name: http-trigger
+          type: http
+          qualifier: LATEST
+          config:
+            methods: ["GET", "POST"]
+            authType: anonymous
