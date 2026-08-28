@@ -133,22 +133,18 @@ def fc_http_handler(event: Any, context: Any = None) -> str:
     evt = _parse_fc_http_event(event)
     method = evt["method"].upper()
     path = evt["path"]
-
-    if method == "GET" and path in ("/", "/health"):
-        return json.dumps({"status": "ok", "product": "TripCascade"})
-
-    if method == "POST" and path == "/disruption":
+    logger.info("fc_http_handler: raw_event_type=%s parsed_method=%s parsed_path=%s",
+               type(event).__name__, method, path)
+    # DEBUG: return raw event + parsed values so we can see FC's event schema.
+    # Remove this debug block once the parsing is confirmed.
+    raw_for_debug = event if not isinstance(event, (bytes, bytearray)) else event.decode(errors="replace")
+    if isinstance(raw_for_debug, str):
         try:
-            body = json.loads(evt["body"]) if evt["body"] else {}
-        except json.JSONDecodeError:
-            return json.dumps({"error": "invalid JSON body"})
-        event_obj = DisruptionEvent(**body) if body.get("node_id") else None
-        if event_obj is None:
-            return json.dumps({"error": "missing or invalid DisruptionEvent body"})
-        result = _orchestrator_handle(event_obj)
-        return json.dumps(result, default=str)
-
-    return json.dumps({"error": "not found"})
+            raw_for_debug = json.loads(raw_for_debug)
+        except Exception:
+            pass
+    debug_info = {"_debug": True, "raw_event": raw_for_debug, "parsed": evt, "method": method, "path": path}
+    return json.dumps(debug_info, default=str)
 
 
 def _parse_fc_http_event(event: Any) -> dict:
