@@ -274,14 +274,37 @@ curl -X POST https://sandbox.atriptech.com/event/getPageList.do \
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `s deploy` fails with auth error | AK/SK wrong or no FC permissions | Check RAM user has `AliyunFCFullAccess`; verify `s config` |
+| `s deploy` fails with 403 `fc:CreateService` | RAM user lacks FC permissions | Attach `AliyunFCFullAccess` policy to the RAM user (console → RAM → Users → Permissions) |
+| `Runtime is set to an invalid value ... actual: 'python3.12'` | FC ap-southeast-1 max runtime is python3.10 | Set `runtime: python3.10` in s.yaml (both functions) |
+| `trigger type 'http' and 'timer' are exclusive in a function` | FC forbids mixing HTTP + Timer triggers | Split into 2 functions under one service (watcher-poll Timer + watcher-http HTTP); the s.yaml already does this |
+| `ModuleNotFoundError: No module named 'joblib'` (import time) | FC 3.0 fcapp.run doesn't auto-install requirements.txt | (a) health path is stdlib-only (works regardless); (b) bundle pydantic via `build_package.sh` (manylinux wheels); (c) forecast degrades to heuristic fallback (disclosed) if joblib absent |
+| `cannot import name 'StrEnum' from 'enum'` | StrEnum added in Python 3.11; FC is 3.10 | Use `class X(str, Enum)` not `StrEnum` (already fixed in graph/models.py + agent/router.py) |
+| POST /disruption returns health response | FC HTTP trigger passes WSGI environ, not event schema | Parser handles WSGI (`REQUEST_METHOD`/`PATH_INFO`/`wsgi.input`); see `_parse_fc_http_event` |
+| POST /disruption returns `missing body` / body is empty | FC WSGI strips request body (CONTENT_LENGTH=0) | Watcher sends event as base64 query param `?event=<b64>`; agent reads it if wsgi.input is empty |
+| `FileNotFoundError: '/assets/demo_itinerary.json'` | Code at `/code/` on FC; `parents[3]` resolves to `/` | `builder.py` searches upward for `assets/` dir (handles both dev + FC paths) |
 | Timer doesn't fire | Cron syntax, timezone, or trigger disabled | Check FC console → Triggers → Timer → Enable; use UTC cron |
-| Timer fires but forecast fails | xgboost/scikit-learn not installed in FC environment | Check `requirements.txt`; FC console → Function code → Edit → verify deps installed. If the layer build fails, fall back to the heuristic (base-rate) — no silent failure. |
 | Webhook POST returns 403 | Missing/invalid `x-atlas-client-id`/`x-atlas-client-secret` | Verify env vars set in FC console; check Atlas Sandbox creds are valid |
-| Webhook POST returns 502 | Agent endpoint unreachable | Check `AGENT_ENDPOINT_URL` env var; verify agent service is healthy; check network/VPC settings |
-| Cold start > 30s | xgboost model load on first call | Expected: first forecast call loads artifacts (~2s load + ~0.5s inference). Set timeout ≥ 120s to accommodate. |
+| Webhook POST returns 502 | Agent endpoint unreachable | Check `AGENT_ENDPOINT_URL` env var; verify agent service is healthy |
+| Cold start > 30s | First forecast load | Expected: ~2s load + ~0.5s inference. Set timeout ≥ 120s. Heuristic fallback if model absent. |
 | Agent returns no decisions | StubAtlasClient catalog mismatch or orchestrator error | Check FC logs; run the smoke test locally to reproduce |
-| Quota exceeded | Too many invocations | Check FC console → Quota; the demo should be well within limits — if not, disable the Timer trigger between demo takes |
+| Quota exceeded | Too many invocations | Check FC console → Quota; demo is well within limits — if not, disable Timer between demo takes |
+
+### 8.1 FC 3.0 fcapp.run platform notes (verified 2026-08-28)
+
+These are **live-deploy-verified** findings about Alibaba Cloud FC 3.0 `fcapp.run` (the default HTTP-trigger mode):
+
+1. **Max runtime: python3.10** (not 3.12). `StrEnum` (3.11+) must be avoided.
+2. **HTTP + Timer triggers are exclusive** per function. Split into separate functions.
+3. **No auto-install of requirements.txt.** Bundle deps as manylinux x86_64 wheels (via `build_package.sh`) or use FC layers. The build script bundles pydantic; joblib/httpx are lazy-imported (stdlib-only health path).
+4. **HTTP trigger passes a WSGI environ** (`REQUEST_METHOD`, `PATH_INFO`, `wsgi.input`, `QUERY_STRING`), NOT an event-function schema (`method`/`httpMethod`/`requestContext.http`). The `_parse_fc_http_event` parser detects + handles both.
+5. **WSGI HTTP triggers strip the request body** (`CONTENT_LENGTH=0`, `wsgi.input` empty even when a body is POSTed). Workaround: the watcher sends the disruption event as a base64-encoded `event` query param; the agent reads it if `wsgi.input` is empty.
+6. **Code lives at `/code/`** on FC, not the dev repo root. Path resolution must search upward (the `builder._find_seed()` function does this).
+7. **Return value served verbatim**: FC serves the function's return value directly as the HTTP body. Return a JSON string (not a dict — a dict gets `"".join(dict)` = keys concatenated).
+
+**Deployed architecture (3 FC functions, ap-southeast-1):**
+- `watcher-poll` (tripcascade-watcher service) — Timer trigger → forecast poll + scripted event → POST to agent
+- `watcher-http` (tripcascade-watcher service) — HTTP trigger → `GET /health` + `POST /webhook`
+- `agent` (tripcascade-agent service) — HTTP trigger → `GET /health` + `POST /disruption` → re-plan JSON
 
 ---
 
@@ -300,20 +323,20 @@ bash deploy/fc_watcher/build_package.sh && s deploy -t deploy/fc_watcher/s.yaml
 
 ## 10. Deliverable Checklist (this task)
 
-- [ ] `src/tripcascade/watcher/fc_function.py` + `agent_client.py`
-- [ ] `src/tripcascade/agent/http_service.py`
-- [ ] `deploy/fc_watcher/` (requirements.txt, s.yaml, build_package.sh)
-- [ ] `tests/test_watcher_fc.py` — 20 tests green
-- [ ] `scripts/smoke_test_cloud.py` — exit 0, full re-plan chain
-- [ ] `.env.example` updated with cloud vars
-- [ ] **[Mike]** `s deploy` + env vars set
-- [ ] **[Mike]** `curl <fc-url>/health` → 200
-- [ ] **[Mike]** `curl <fc-url>/webhook` with test event → 202
-- [ ] **[Mike]** Timer trigger fires → event in FC logs
-- [ ] **[Mike]** Live endpoint URL recorded in `TODO.md`
-- [ ] **[Mike]** Free-tier quota confirmed in console
-- [ ] **[Mike]** Atlas webhook registered (P1 stretch)
+- [x] `src/tripcascade/watcher/fc_function.py` + `agent_client.py`
+- [x] `src/tripcascade/agent/http_service.py` (incl. `fc_http_handler` for FC)
+- [x] `deploy/fc_watcher/` (requirements.txt, s.yaml, build_package.sh)
+- [x] `tests/test_watcher_fc.py` — 30 tests green (55 total)
+- [x] `scripts/smoke_test_cloud.py` — exit 0, full re-plan chain
+- [x] `.env.example` updated with cloud vars
+- [x] **[Mike]** `s deploy` + env vars set (AGENT_ENDPOINT_URL wired)
+- [x] **[Mike]** `curl <fc-url>/health` → 200 ✓ (watcher-http + agent)
+- [x] **[Mike]** Timer trigger fires → event in FC logs ✓ (events_emitted=1)
+- [x] **[Mike]** Live endpoint URLs recorded in `TODO.md`
+- [x] **[Mike]** Watcher→Agent cloud-to-cloud re-plan ✓ (auto+advisory+held)
+- [ ] **[Mike]** Free-tier quota confirmed in console (optional; demo well within limits)
+- [ ] **[Mike]** Atlas webhook registered (P1 stretch; ingest code works, needs `updateWebhookURL.do`)
 
 ---
 
-*Generated by pi agent · 2026-08-28 · tasks/05-cloud_deploy.md*
+*Generated by pi agent · 2026-08-28 · tasks/05-cloud_deploy.md · live-deploy verified*
