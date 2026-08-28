@@ -17,15 +17,17 @@ from __future__ import annotations
 
 import html
 import logging
+import os
 
 import gradio as gr
 
 from tripcascade.agent.config import get_settings
 from tripcascade.agent.decision_log import DecisionLog
 from tripcascade.agent.orchestrator import Orchestrator
-from tripcascade.atlas_tools.client import StubAtlasClient
+from tripcascade.atlas_tools.client import CLISubprocessClient, StubAtlasClient
 from tripcascade.forecast.inference import predict_disruption_prob
 from tripcascade.graph.builder import load_demo_itinerary
+from tripcascade.graph.models import DecisionStatus
 from tripcascade.watcher.events import make_scripted_event, populate_forecast
 
 logger = logging.getLogger(__name__)
@@ -85,6 +87,19 @@ OUTCOME_COLOR = {
     "human_rejected": PAL["at_risk"],
 }
 
+# Custom Gradio hues for the aviation-dusk theme (Gradio 6: Color requires
+# c50..c950 + optional name; full swatch so no version-drift TypeErrors).
+GOLD_HUE = gr.themes.Color(
+    c50="#2b2113", c100="#fdf6e3", c200="#f5dba1", c300="#e8c878",
+    c400="#d4a853", c500="#d4a853", c600="#b8923f", c700="#967533",
+    c800="#7a5e2b", c900="#5e4820", c950="#3d2f15", name="tripcascade-gold",
+)
+NAVY_HUE = gr.themes.Color(
+    c50="#101d2b", c100="#f0f6fc", c200="#d2dee8", c300="#a9bccc",
+    c400="#7d96a8", c500="#5a7384", c600="#3d5666", c700="#2a3d4a",
+    c800="#1b2838", c900="#0d1b2a", c950="#07101a", name="tripcascade-navy",
+)
+
 # ---------------------------------------------------------------------------
 # CSS (Blocks-level)
 # ---------------------------------------------------------------------------
@@ -92,6 +107,7 @@ OUTCOME_COLOR = {
 BLOCKS_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+html, body { background: #0D1B2A !important; }
 .gradio-container { max-width: 1400px !important; background: #0D1B2A !important; }
 .footer { display: none !important; }
 /* override gradio default font */
@@ -323,25 +339,33 @@ def render_decisions(result) -> str:
         status_val = str(d.status.value if hasattr(d.status, "value") else d.status)
         color = DECISION_STATUS_COLOR.get(status_val, PAL["text_muted"])
 
-        # badge text
-        if d.advisory:
+        # badge text (terminal states first: executed/rejected override flags)
+        if status_val == "executed":
+            badge = "DONE"
+        elif status_val == "rejected":
+            badge = "REJECTED"
+        elif d.advisory:
             badge = "ADVISORY"
         elif d.auto_settle or status_val == "auto_executed":
             badge = "AUTO"
         elif d.held or status_val == "held":
             badge = "HELD"
-        elif status_val == "executed":
-            badge = "DONE"
         else:
             badge = status_val.upper()
 
         icon = NODE_ICON.get("hotel", "&#9992;") if d.advisory else "&#9992;"
 
-        # pulsing class for held cards
-        pulse_cls = " tc-pulse" if (d.held or status_val == "held") else ""
+        # pulsing class for held cards (stops once executed/rejected)
+        pulse_cls = " tc-pulse" if status_val == "held" else ""
 
-        # verdict text (preserves 'auto-settled', 'approval required', 'advisory')
-        verdict = d.verdict
+        # verdict text (preserves 'auto-settled', 'approval required', 'advisory';
+        # terminal states get explicit outcome text)
+        if status_val == "executed" and not d.advisory:
+            verdict = "human approved — executed in Atlas Sandbox"
+        elif status_val == "rejected":
+            verdict = "human rejected — original booking kept"
+        else:
+            verdict = d.verdict
 
         # fare diff
         if not d.advisory:
@@ -487,12 +511,28 @@ class AppState:
         self.log = DecisionLog()
 
 
+def _make_demo_client(settings):
+    """Atlas client for the demo UI.
+
+    Default: StubAtlasClient (deterministic, the green path). Set
+    TRIPCASCADE_UI_CLIENT=cli to run the money step against the real Atlas
+    Sandbox via the `atlas-flight` CLI for higher authenticity on take day
+    (the booking flow was proven in the task-02 rehearsal; rehearse the take
+    first). The green default is unchanged.
+    """
+    mode = os.environ.get("TRIPCASCADE_UI_CLIENT", "stub").strip().lower()
+    if mode == "cli":
+        logger.info("demo UI using CLISubprocessClient (real Atlas Sandbox booking)")
+        return CLISubprocessClient(settings)
+    return StubAtlasClient(settings)
+
+
 def run_scenario():
     """Load demo itinerary, run forecast + scripted disruption, render everything."""
     st = AppState()
     graph = load_demo_itinerary()
     populate_forecast(graph, predict_disruption_prob)  # wire the forecast (real P per leg)
-    orc = Orchestrator(graph=graph, client=StubAtlasClient(get_settings()), decision_log=st.log)
+    orc = Orchestrator(graph=graph, client=_make_demo_client(get_settings()), decision_log=st.log)
     res = orc.handle_disruption(make_scripted_event(DISRUPTED_LEG, SCRIPTED_P))
     st.orchestrator = orc
     st.result = res
@@ -509,24 +549,51 @@ def run_scenario():
 def approve_held(st: AppState):
     """UI Approve: execute the held above-cap re-plan."""
     if st is None or st.result is None or not st.result.held_for_approval:
-        return st, "No held decision to approve.", render_log(st.log if st else DecisionLog()), gr.update(visible=False)
+        return (
+            st, "No held decision to approve.",
+            render_decisions(st.result if st else None),
+            render_log(st.log if st else DecisionLog()),
+            gr.update(visible=False),
+        )
     held = st.result.held_for_approval[0]
     r = st.orchestrator.approve(held, "approved by traveler — return re-book confirmed")
+    held.status = DecisionStatus.EXECUTED  # sync the displayed card (card flips HELD→DONE)
     msg = (
-        f"&#9989; <strong>Approved</strong> {held.node_id}: orderNo "
-        f"<code>{r.orderNo}</code> (asserted={r.asserted}, outcome={r.record.outcome.value})"
+        f'<span style="color:{PAL["text"]};font-size:15px;">&#9989; '
+        f"<strong>Approved</strong> {held.node_id}: orderNo "
+        f'<code style="color:{PAL["accent"]}">{r.orderNo}</code> '
+        f"(asserted={r.asserted}, outcome={r.record.outcome.value})</span>"
     )
-    return st, msg, render_log(st.log), gr.update(visible=False)
+    return (
+        st, msg,
+        render_decisions(st.result),
+        render_log(st.log),
+        gr.update(visible=False),
+    )
 
 
 def reject_held(st: AppState):
     """UI Reject: record the human rejection (no Atlas write)."""
     if st is None or st.result is None or not st.result.held_for_approval:
-        return st, "No held decision to reject.", render_log(st.log if st else DecisionLog()), gr.update(visible=False)
+        return (
+            st, "No held decision to reject.",
+            render_decisions(st.result if st else None),
+            render_log(st.log if st else DecisionLog()),
+            gr.update(visible=False),
+        )
     held = st.result.held_for_approval[0]
     rec = st.orchestrator.policy.reject(held, "rejected by traveler — keep original booking")
-    msg = f"&#9940; <strong>Rejected</strong> {held.node_id}: recorded (outcome={rec.outcome.value})"
-    return st, msg, render_log(st.log), gr.update(visible=False)
+    msg = (
+        f'<span style="color:{PAL["text"]};font-size:15px;">&#9940; '
+        f"<strong>Rejected</strong> {held.node_id}: recorded "
+        f"(outcome={rec.outcome.value})</span>"
+    )
+    return (
+        st, msg,
+        render_decisions(st.result),
+        render_log(st.log),
+        gr.update(visible=False),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -534,20 +601,13 @@ def reject_held(st: AppState):
 # ---------------------------------------------------------------------------
 
 
+# Gradio 6: theme/css moved from Blocks() to launch() (constructor silently
+# ignores them with a UserWarning in 6.x).
+DEMO_THEME = gr.themes.Soft(primary_hue=GOLD_HUE, neutral_hue=NAVY_HUE)
+
+
 def build_app():
-    with gr.Blocks(
-        title="TripCascade",
-        css=BLOCKS_CSS,
-        theme=gr.themes.Soft(
-            primary_hue=gr.themes.Color(c100="#fdf6e3", c200="#f5dba1", c300="#e8c878",
-                                        c400="#d4a853", c500="#d4a853", c600="#b8923f",
-                                        c700="#967533", c800="#7a5e2b", c900="#5e4820", c950="#3d2f15"),
-            neutral_hue=gr.themes.Color(c100="#f0f6fc", c200="#d2dee8", c300="#a9bccc",
-                                         c400="#7d96a8", c500="#5a7384", c600="#3d5666",
-                                         c700="#2a3d4a", c800="#1b2838", c900="#0d1b2a",
-                                         c950="#07101a"),
-        ),
-    ) as demo:
+    with gr.Blocks(title="TripCascade") as demo:
         # header
         gr.HTML(
             f'<div style="display:flex;justify-content:space-between;align-items:center;'
@@ -594,19 +654,22 @@ def build_app():
         approve_btn.click(
             approve_held,
             inputs=[state],
-            outputs=[state, verdict_html, log_html, approve_row],
+            outputs=[state, verdict_html, decisions_html, log_html, approve_row],
         )
         reject_btn.click(
             reject_held,
             inputs=[state],
-            outputs=[state, verdict_html, log_html, approve_row],
+            outputs=[state, verdict_html, decisions_html, log_html, approve_row],
         )
     return demo
 
 
 def main() -> None:
     app = build_app()
-    app.launch(server_name="127.0.0.1", server_port=7860, share=False, inbrowser=False)
+    app.launch(
+        server_name="127.0.0.1", server_port=7860, share=False, inbrowser=False,
+        theme=DEMO_THEME, css=BLOCKS_CSS,
+    )
 
 
 if __name__ == "__main__":

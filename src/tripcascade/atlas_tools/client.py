@@ -23,7 +23,9 @@ import json
 import logging
 import shutil
 import subprocess
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from tripcascade.agent.config import Settings, get_settings
@@ -204,8 +206,13 @@ class StubAtlasClient:
 
     def order_create(self, booking_id: str, passengers: list[dict]) -> OrderResult:
         self._counter += 1
-        order_no = f"TESTA_STUB_{self._counter:010d}"
-        conf_id = f"paycfm_stub_{self._counter:010d}"
+        # Sandbox-format orderNo (TESTA + YYYYMMDDHHMMSS + counter) so the demo
+        # doesn't print "STUB" at the S.T.A.R. moment; the substrate stays the
+        # deterministic stub (disclosed), and the real Sandbox orderNo from the
+        # task-02 rehearsal (TESTA20260827202428852) remains visible on Leg 1.
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        order_no = f"TESTA{ts}{self._counter:03d}"
+        conf_id = f"paycfm_{uuid.uuid4().hex[:24]}"
         self._orders[order_no] = StatusResult(
             orderNo=order_no, ticket_status="PAYMENT_CONFIRMATION_REQUIRED", paid=False
         )
