@@ -140,6 +140,28 @@ def fc_http_handler(event: Any, context: Any = None) -> str:
         return json.dumps({"status": "ok", "product": "TripCascade"})
 
     if method == "POST" and path == "/disruption":
+        # DIAGNOSTIC: dump all WSGI environ keys + values to find the body.
+        # Remove once the body-reading path is confirmed.
+        if isinstance(event, dict):
+            safe_env = {}
+            for k, v in event.items():
+                if k == "wsgi.input":
+                    try:
+                        pos = v.tell() if hasattr(v, "tell") else None
+                        data = v.read() if hasattr(v, "read") else None
+                        if pos is not None:
+                            try:
+                                v.seek(pos)
+                            except Exception:
+                                pass
+                        safe_env[k] = {"pos_before": pos, "data_len": len(data) if data else 0, "data": (data.decode(errors="replace")[:500] if data else None)}
+                    except Exception as e:
+                        safe_env[k] = f"<read error: {e}>"
+                elif isinstance(v, (str, int, float)) or v is None:
+                    safe_env[k] = v
+                else:
+                    safe_env[k] = f"<{type(v).__name__}>"
+            return json.dumps({"_diag": "full environ dump", "parsed_evt": evt, "environ": safe_env}, default=str)
         try:
             body = json.loads(evt["body"]) if evt["body"] else {}
         except json.JSONDecodeError:
