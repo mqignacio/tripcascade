@@ -143,10 +143,10 @@ def fc_http_handler(event: Any, context: Any = None) -> str:
         try:
             body = json.loads(evt["body"]) if evt["body"] else {}
         except json.JSONDecodeError:
-            return json.dumps({"error": "invalid JSON body"})
+            return json.dumps({"error": "invalid JSON body", "raw_body": evt["body"][:200]})
         event_obj = DisruptionEvent(**body) if body.get("node_id") else None
         if event_obj is None:
-            return json.dumps({"error": "missing or invalid DisruptionEvent body"})
+            return json.dumps({"error": "missing or invalid DisruptionEvent body", "parsed": evt})
         result = _orchestrator_handle(event_obj)
         return json.dumps(result, default=str)
 
@@ -175,14 +175,26 @@ def _parse_fc_http_event(event: Any) -> dict:
         method = event.get("REQUEST_METHOD", "GET")
         path = event.get("PATH_INFO", "/")
         body = ""
-        content_length = int(event.get("CONTENT_LENGTH", 0) or 0)
-        if content_length > 0:
-            fp = event.get("wsgi.input")
-            if fp is not None:
-                try:
+        fp = event.get("wsgi.input")
+        if fp is not None and method in ("POST", "PUT", "PATCH"):
+            # CONTENT_LENGTH may be missing/0 even when a body exists; read
+            # what's available, falling back to a generous max if absent.
+            content_length = int(event.get("CONTENT_LENGTH", 0) or 0)
+            try:
+                if content_length > 0:
                     body = fp.read(content_length).decode(errors="replace")
-                except Exception:
-                    body = ""
+                else:
+                    # Best-effort read when CONTENT_LENGTH is absent (FC quirk).
+                    try:
+                        fp.seek(0, 2)  # seek to end
+                        size = fp.tell()
+                        fp.seek(0)
+                        if size > 0:
+                            body = fp.read(size).decode(errors="replace")
+                    except (AttributeError, OSError, ValueError):
+                        pass
+            except Exception:
+                body = ""
         return {"method": method, "path": path, "body": body}
 
     # Event-function schemas (fallback)

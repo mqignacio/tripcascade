@@ -306,14 +306,23 @@ def _parse_fc_http_event(event: Any) -> dict:
         method = event.get("REQUEST_METHOD", "GET")
         path = event.get("PATH_INFO", "/")
         body = ""
-        content_length = int(event.get("CONTENT_LENGTH", 0) or 0)
-        if content_length > 0:
-            fp = event.get("wsgi.input")
-            if fp is not None:
-                try:
+        fp = event.get("wsgi.input")
+        if fp is not None and method in ("POST", "PUT", "PATCH"):
+            content_length = int(event.get("CONTENT_LENGTH", 0) or 0)
+            try:
+                if content_length > 0:
                     body = fp.read(content_length).decode(errors="replace")
-                except Exception:
-                    body = ""
+                else:
+                    try:
+                        fp.seek(0, 2)
+                        size = fp.tell()
+                        fp.seek(0)
+                        if size > 0:
+                            body = fp.read(size).decode(errors="replace")
+                    except (AttributeError, OSError, ValueError):
+                        pass
+            except Exception:
+                body = ""
         return {"method": method, "path": path, "body": body}
 
     # Event-function schemas (fallback)
