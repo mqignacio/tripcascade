@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from tripcascade.forecast.inference import predict_disruption_prob
@@ -98,7 +98,7 @@ def _handle_webhook(raw_body: str) -> dict:
             "node_id": SCRIPTED_DEMO_NODE,  # map to the demo itinerary's leg1
             "p_disruption": 1.0,            # confirmed disruption (not forecast)
             "threshold": 0.35,
-            "ts": datetime.now(UTC).isoformat(),
+            "ts": datetime.now(timezone.utc).isoformat(),
             "source": f"atlas-webhook:{event_type}",
             "webhook_body": body,
         }

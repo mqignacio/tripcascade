@@ -34,7 +34,7 @@ services:
       service: ${vars.service}
       function:
         name: watcher
-        runtime: python3.12
+        runtime: python3.10
         handler: tripcascade.watcher.fc_function.handler
         codeUri: ./
         memorySize: 512
@@ -74,7 +74,7 @@ services:
   #       name: tripcascade-agent
   #     function:
   #       name: agent
-  #       runtime: python3.12
+  #       runtime: python3.10
   #       handler: tripcascade.agent.http_service.handler
   #       codeUri: ./
   #       memorySize: 256

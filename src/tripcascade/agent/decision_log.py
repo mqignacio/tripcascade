@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from tripcascade.graph.models import ActionType, DecisionRecord, Outcome
@@ -98,4 +98,4 @@ class DecisionLog:
 
     @staticmethod
     def now_iso() -> str:
-        return datetime.now(UTC).isoformat()
+        return datetime.now(timezone.utc).isoformat()

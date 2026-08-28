@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from tripcascade.agent.config import Settings, get_settings
 from tripcascade.agent.decision_log import DecisionLog
@@ -90,7 +90,7 @@ class PolicyEngine:
 
         Pure: no Atlas call. The orchestrator calls this after the LLM proposes.
         """
-        decision_id = f"dec_{node.node_id}_{datetime.now(UTC).strftime('%H%M%S%f')}"
+        decision_id = f"dec_{node.node_id}_{datetime.now(timezone.utc).strftime('%H%M%S%f')}"
         amount = int(proposal.fare_difference_cents)
         cap = int(self.settings.settlement_cap_cents)
 

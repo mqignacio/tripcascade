@@ -10,7 +10,7 @@ P1 complementary signal (doc/atlas_surface.md §3) — kept in `aftercare.query_
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from tripcascade.agent.config import get_settings
 from tripcascade.graph.models import DisruptionEvent, ItineraryGraph
@@ -53,7 +53,7 @@ def populate_forecast(
                     node_id=node.node_id,
                     p_disruption=p,
                     threshold=threshold,
-                    ts=datetime.now(UTC),
+                    ts=datetime.now(timezone.utc),
                 )
             )
     return events
@@ -72,5 +72,5 @@ def make_scripted_event(
         node_id=node_id,
         p_disruption=p_disruption,
         threshold=settings.alert_threshold if threshold is None else threshold,
-        ts=datetime.now(UTC),
+        ts=datetime.now(timezone.utc),
     )
