@@ -73,9 +73,9 @@ class TestWebhookDispatch:
 
     def test_disruption_event_type_accepted(self, monkeypatch):
         """abnormal.cancelled should be dispatched to agent."""
-        # mock post_disruption to avoid actually calling an endpoint
+        # mock post_disruption at its source module (lazy import inside _handle_webhook)
         mock_post = MagicMock(return_value={"status": "ok", "decisions": []})
-        monkeypatch.setattr("tripcascade.watcher.fc_function.post_disruption", mock_post)
+        monkeypatch.setattr("tripcascade.watcher.agent_client.post_disruption", mock_post)
         body = json.dumps({"eventType": "abnormal.cancelled", "orderNo": "T123"})
         r = dispatch("http", {"method": "POST", "path": "/webhook", "body": body})
         assert r["status"] == 202
@@ -88,7 +88,7 @@ class TestWebhookDispatch:
     def test_non_disruption_event_ignored(self, monkeypatch):
         """Non-disruption webhook event types should be silently ignored."""
         mock_post = MagicMock()
-        monkeypatch.setattr("tripcascade.watcher.fc_function.post_disruption", mock_post)
+        monkeypatch.setattr("tripcascade.watcher.agent_client.post_disruption", mock_post)
         r = dispatch("http", {"method": "POST", "path": "/webhook", "body": '{"eventType":"payment.confirmed"}'})
         assert r["status"] == 200
         mock_post.assert_not_called()
@@ -142,12 +142,14 @@ class TestAgentClient:
         assert get_agent_endpoint() == "https://example.com/api"
 
     def test_post_disruption_mocked(self, monkeypatch):
-        """Verify POST shape without hitting a real endpoint."""
-        mock_post = MagicMock()
-        mock_post.return_value.json.return_value = {"status": "ok"}
-        with patch("httpx.post", return_value=mock_post.return_value):
-            result = post_disruption({"node_id": "leg1", "p_disruption": 0.82, "threshold": 0.35, "ts": "2026-01-01T00:00:00Z"})
-            assert result["status"] == "ok"
+        """Verify POST shape without hitting a real endpoint (urllib, not httpx)."""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"status": "ok"}'
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        monkeypatch.setattr("urllib.request.urlopen", MagicMock(return_value=mock_resp))
+        result = post_disruption({"node_id": "leg1", "p_disruption": 0.82, "threshold": 0.35, "ts": "2026-01-01T00:00:00Z"})
+        assert result["status"] == "ok"
 
 
 class TestWSGIAdapter:
@@ -227,7 +229,7 @@ class TestFCHTTPEventHandler:
     def test_webhook_post(self, monkeypatch):
         """Webhook POST with a disruption event dispatches to agent."""
         mock_post = MagicMock(return_value={"status": "ok", "decisions": []})
-        monkeypatch.setattr("tripcascade.watcher.fc_function.post_disruption", mock_post)
+        monkeypatch.setattr("tripcascade.watcher.agent_client.post_disruption", mock_post)
         result = http_event_handler({
             "method": "POST",
             "path": "/webhook",

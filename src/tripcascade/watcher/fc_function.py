@@ -30,15 +30,16 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from tripcascade.forecast.inference import predict_disruption_prob
-from tripcascade.graph.builder import load_demo_itinerary
-from tripcascade.watcher.agent_client import get_watcher_demo_mode, post_disruption
-from tripcascade.watcher.events import make_scripted_event, populate_forecast
-
 logger = logging.getLogger(__name__)
 
 SCRIPTED_DEMO_NODE = "leg1_pvg_nrt"
 SCRIPTED_DEMO_P = 0.82  # typhoon-augmented forecast signal (tasks/04 disclosure)
+
+# NOTE: tripcascade.* imports are LAZY (inside functions) so this module loads
+# cleanly on Alibaba Cloud Function Compute even before third-party deps
+# (pydantic, joblib, numpy, sklearn, xgboost) are installed. The health check
+# path needs zero third-party deps; the Timer poll degrades gracefully if the
+# forecast/graph deps are unavailable.
 
 
 def dispatch(trigger: str, payload: dict | None = None) -> dict:
@@ -103,6 +104,7 @@ def _handle_webhook(raw_body: str) -> dict:
             "webhook_body": body,
         }
         try:
+            from tripcascade.watcher.agent_client import post_disruption
             agent_response = post_disruption(disruption_event)
             logger.info("agent response: %s", json.dumps(agent_response, default=str)[:500])
             return _http_response(202, {"status": "dispatched", "agent": agent_response})
@@ -120,6 +122,21 @@ def _http_response(status: int, body: dict) -> dict:
 # ─── Timer dispatch (scheduled forecast-poll, P0) ───────────────
 
 def _dispatch_timer() -> dict:
+    # Lazy imports: these pull in pydantic (graph models) + joblib (forecast).
+    # If unavailable, the dispatch logs the error and returns gracefully — the
+    # health check path never touches these.
+    try:
+        from tripcascade.forecast.inference import predict_disruption_prob
+        from tripcascade.graph.builder import load_demo_itinerary
+        from tripcascade.watcher.agent_client import get_watcher_demo_mode, post_disruption
+        from tripcascade.watcher.events import make_scripted_event, populate_forecast
+    except ImportError as e:
+        logger.error("Timer dispatch: missing dependency (%s). Install deps on FC.", e)
+        return _http_response(500, {
+            "status": "error",
+            "error": f"missing dependency: {e}. See doc/deploy_watcher.md §8 (install deps).",
+        })
+
     graph = load_demo_itinerary()
     events = populate_forecast(graph, predict_disruption_prob)
 

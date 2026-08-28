@@ -2,14 +2,19 @@
 
 Posts `disruption_likely` events from the Watcher (Alibaba Cloud Function Compute
 or local smoke test) to the agent HTTP service and returns the re-plan JSON.
+
+Uses stdlib ``urllib.request`` (not httpx) so the watcher's critical path has
+ZERO third-party dependencies — the FC function imports cleanly and degrades
+gracefully even without a deps layer installed.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-
-import httpx
+import urllib.error
+import urllib.request
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +35,7 @@ def post_disruption(disruption_event: dict, *, timeout: float = 30.0) -> dict:
 
     Args:
         disruption_event: dict matching the `DisruptionEvent` schema.
-        timeout: httpx request timeout.
+        timeout: request timeout in seconds.
 
     Returns:
         parsed JSON response from the agent.
@@ -41,13 +46,19 @@ def post_disruption(disruption_event: dict, *, timeout: float = 30.0) -> dict:
     """
     url = f"{get_agent_endpoint()}/disruption"
     logger.info("POST %s -> %s", disruption_event.get("node_id"), url)
+    data = json.dumps(disruption_event, default=str).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
     try:
-        resp = httpx.post(url, json=disruption_event, timeout=timeout)
-        resp.raise_for_status()
-    except httpx.RequestError as e:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {}
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace")[:500] if e.fp else ""
+        raise RuntimeError(f"agent returned {e.code}: {detail}") from e
+    except (urllib.error.URLError, OSError) as e:
         raise RuntimeError(f"agent POST failed: {e}") from e
-    except httpx.HTTPStatusError as e:
-        raise RuntimeError(
-            f"agent returned {e.response.status_code}: {e.response.text[:500]}"
-        ) from e
-    return resp.json()

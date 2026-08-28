@@ -21,9 +21,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import joblib
-import numpy as np
-
 logger = logging.getLogger(__name__)
 
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
@@ -41,6 +38,15 @@ def _load_artifacts() -> None:
 
     if _model is not None:
         return
+
+    # Lazy import: joblib/numpy are heavy ML deps that may not be installed in
+    # serverless environments (e.g. Alibaba Cloud FC without a deps layer).
+    # The module must import cleanly without them; inference degrades to the
+    # heuristic fallback (SPECS S-002: "no silent failure").
+    try:
+        import joblib
+    except ImportError as e:
+        raise RuntimeError(f"joblib not installed: {e}") from e
 
     logger.info("Loading forecast artifacts from %s", ARTIFACTS_DIR)
     _model = joblib.load(ARTIFACTS_DIR / "forecast_model.joblib")
