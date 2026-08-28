@@ -213,14 +213,14 @@ def http_handler(environ: dict, start_response) -> list[bytes]:
     return [body_bytes]
 
 
-def http_event_handler(event: Any, context: Any = None) -> dict:
-    """FC HTTP-trigger entry point (event-function model).
+def http_event_handler(event: Any, context: Any = None) -> str:
+    """FC HTTP-trigger entry point (fcapp.run event-function model).
 
-    FC's standard HTTP trigger calls ``handler(event, context)`` where ``event``
-    is the HTTP request serialized as a dict/JSON-str. This adapter normalizes
-    the event (handling the common FC schemas), delegates to :func:`dispatch`,
-    and returns the FC HTTP response format
-    (``{isBase64Encoded, statusCode, headers, body}``).
+    FC 3.0 fcapp.run HTTP triggers serve the function's return value directly as
+    the response body. Returning a dict causes FC to join the dict's keys
+    (``"".join(dict)``); a string is served verbatim. So we return the JSON
+    body as a string. Status defaults to 200 (the demo's only hard requirement
+    is health=200; the webhook also returning 200 is acceptable for Atlas).
 
     Note: FC does NOT allow HTTP + Timer triggers on the same function, so the
     HTTP function (``watcher-http``) and Timer function (``watcher-poll``) are
@@ -229,12 +229,8 @@ def http_event_handler(event: Any, context: Any = None) -> dict:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     evt = _parse_fc_http_event(event)
     result = dispatch("http", evt)
-    return {
-        "isBase64Encoded": False,
-        "statusCode": result["status"],
-        "headers": result["headers"],
-        "body": json.dumps(result["body"], default=str),
-    }
+    # Return the JSON body as a string (FC serves it verbatim; status=200).
+    return json.dumps(result["body"], default=str)
 
 
 def _parse_fc_http_event(event: Any) -> dict:
