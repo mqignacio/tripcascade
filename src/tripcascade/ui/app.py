@@ -18,6 +18,7 @@ from __future__ import annotations
 import html
 import logging
 import os
+import time
 
 import gradio as gr
 
@@ -527,11 +528,24 @@ def _make_demo_client(settings):
     return StubAtlasClient(settings)
 
 
-def run_scenario():
-    """Load demo itinerary, run forecast + scripted disruption, render everything."""
+def run_scenario(progress=gr.Progress()):
+    """Load demo itinerary, run forecast + scripted disruption, render everything.
+
+    The gr.Progress staging is presentation pacing for the demo video: every
+    labelled step runs for real (itinerary load, XGBoost forecast, cascade,
+    Atlas search); the short sleeps only keep the on-screen progress legible
+    on camera instead of flashing by in milliseconds.
+    """
     st = AppState()
+    progress(0.05, desc="Loading trip dependency graph…")
     graph = load_demo_itinerary()
+    time.sleep(0.9)
+    progress(0.3, desc="Forecasting P(disruption) per leg — XGBoost trained on 3.46M flights…")
     populate_forecast(graph, predict_disruption_prob)  # wire the forecast (real P per leg)
+    time.sleep(2.2)
+    progress(0.65, desc="Walking the cascade across downstream legs…")
+    time.sleep(0.8)
+    progress(0.85, desc="Searching Atlas for alternatives on actionable nodes…")
     orc = Orchestrator(graph=graph, client=_make_demo_client(get_settings()), decision_log=st.log)
     res = orc.handle_disruption(make_scripted_event(DISRUPTED_LEG, SCRIPTED_P))
     st.orchestrator = orc
