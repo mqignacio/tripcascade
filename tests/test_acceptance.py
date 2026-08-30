@@ -519,15 +519,15 @@ def test_fr008_ui_graph_render(graph):
     assert "S$50" in rendered or "5000c" in rendered
 
 
-def test_fr008_ui_decision_render(stack, graph):
+def test_fr008_ui_decision_render(stack, graph, fresh_log):
     """FR-008: decision verdicts render correctly for all paths."""
     from tripcascade.ui.app import render_decisions
 
     s, client, router, policy = stack
     adults, children = _pax(graph)
 
-    # Run the orchestrator to get decisions
-    orc = Orchestrator(graph=graph, client=client, settings=s, decision_log=DecisionLog())
+    # Run the orchestrator to get decisions (fresh_log: never the real log path)
+    orc = Orchestrator(graph=graph, client=client, settings=s, decision_log=fresh_log)
     res = orc.handle_disruption(make_scripted_event("leg1_pvg_nrt", 0.82))
 
     rendered = render_decisions(res)
@@ -564,12 +564,27 @@ def test_fr008_ui_decision_log_render(graph, fresh_log):
     assert "TEST123" in populated
 
 
-def test_fr008_ui_scenario_roundtrip():
+def test_fr008_ui_scenario_roundtrip(tmp_path, monkeypatch):
     """FR-008: run_scenario produces all 6 display elements.
 
     Verification: the walk-through shows graph, forecast, cascade, re-plan,
     approve/reject, decision log.
     """
+    # Isolate the decision log: run_scenario() builds AppState with the default
+    # path — without this the test appends real records to logs/decision_log.jsonl
+    # (polluted the demo-take log on 2026-08-30). Settings is frozen; swap the
+    # cached instance via dataclasses.replace.
+    import dataclasses
+
+    from tripcascade.agent import config
+
+    monkeypatch.setattr(
+        config,
+        "_LOADED",
+        dataclasses.replace(
+            config.get_settings(), decision_log_path=tmp_path / "decision_log.jsonl"
+        ),
+    )
     from tripcascade.ui.app import run_scenario
 
     st, graph_md, decisions_md, log_md, approve_row = run_scenario()
