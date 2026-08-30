@@ -554,6 +554,7 @@ def run_scenario(progress=gr.Progress()):
     return (
         st,
         render_graph(graph, res.cascade),
+        "",  # clear any previous verdict line
         render_decisions(res),
         render_log(st.log),
         gr.update(visible=show_approve),
@@ -573,10 +574,16 @@ def approve_held(st: AppState):
     r = st.orchestrator.approve(held, "approved by traveler — return re-book confirmed")
     held.status = DecisionStatus.EXECUTED  # sync the displayed card (card flips HELD→DONE)
     msg = (
-        f'<span style="color:{PAL["text"]};font-size:15px;">&#9989; '
-        f"<strong>Approved</strong> {held.node_id}: orderNo "
-        f'<code style="color:{PAL["accent"]}">{r.orderNo}</code> '
-        f"(asserted={r.asserted}, outcome={r.record.outcome.value})</span>"
+        f'<div style="background:{PAL["surface"]};border:2px solid {PAL["settled"]};'
+        f'border-radius:10px;padding:14px 18px;margin:12px 0;">'
+        f'<span style="color:{PAL["settled"]};font-size:18px;font-weight:700;">'
+        f"&#9989; APPROVED &amp; EXECUTED</span>"
+        f'<div style="color:{PAL["text"]};font-size:15px;margin-top:6px;">'
+        f"{held.node_id} re-booked in Atlas Sandbox &middot; orderNo "
+        f'<code style="color:{PAL["accent"]};font-size:16px;">{r.orderNo}</code></div>'
+        f'<div style="color:{PAL["text_muted"]};font-size:13px;margin-top:2px;">'
+        f"asserted={r.asserted} &middot; outcome={r.record.outcome.value} "
+        f"&middot; logged to decision-learning log</div></div>"
     )
     return (
         st, msg,
@@ -598,9 +605,13 @@ def reject_held(st: AppState):
     held = st.result.held_for_approval[0]
     rec = st.orchestrator.policy.reject(held, "rejected by traveler — keep original booking")
     msg = (
-        f'<span style="color:{PAL["text"]};font-size:15px;">&#9940; '
-        f"<strong>Rejected</strong> {held.node_id}: recorded "
-        f"(outcome={rec.outcome.value})</span>"
+        f'<div style="background:{PAL["surface"]};border:2px solid {PAL["at_risk"]};'
+        f'border-radius:10px;padding:14px 18px;margin:12px 0;">'
+        f'<span style="color:{PAL["at_risk"]};font-size:18px;font-weight:700;">'
+        f"&#9940; REJECTED</span>"
+        f'<div style="color:{PAL["text"]};font-size:15px;margin-top:6px;">'
+        f"{held.node_id} &middot; original booking kept &middot; recorded "
+        f"(outcome={rec.outcome.value})</div></div>"
     )
     return (
         st, msg,
@@ -644,6 +655,11 @@ def build_app():
         with gr.Row():
             run_btn = gr.Button("Run disruption scenario", variant="primary", size="lg")
 
+        # Always-visible verdict line (approve/reject outcome + orderNo). Lives
+        # OUTSIDE approve_row so it stays on screen after the row hides — the
+        # S.T.A.R. moment must remain visible in the demo take.
+        verdict_html = gr.HTML(value="")
+
         graph_html = gr.HTML(
             value=f'<div style="background:{PAL["surface"]};padding:24px;border-radius:12px;'
             f'color:{PAL["text_muted"]};">Click Run to load the trip dependency graph.</div>'
@@ -655,7 +671,6 @@ def build_app():
         with gr.Row(visible=False) as approve_row:
             approve_btn = gr.Button("Approve held re-plan (Leg 2)", variant="primary", size="lg")
             reject_btn = gr.Button("Reject", variant="stop", size="lg")
-            verdict_html = gr.HTML(value="")
         log_html = gr.HTML(
             value=f'<div style="background:{PAL["surface"]};padding:24px;border-radius:12px;'
             f'color:{PAL["text_muted"]};">Decision-learning log will appear here.</div>'
@@ -663,7 +678,7 @@ def build_app():
 
         run_btn.click(
             run_scenario,
-            outputs=[state, graph_html, decisions_html, log_html, approve_row],
+            outputs=[state, graph_html, verdict_html, decisions_html, log_html, approve_row],
         )
         approve_btn.click(
             approve_held,

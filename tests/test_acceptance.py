@@ -587,10 +587,11 @@ def test_fr008_ui_scenario_roundtrip(tmp_path, monkeypatch):
     )
     from tripcascade.ui.app import run_scenario
 
-    st, graph_md, decisions_md, log_md, approve_row = run_scenario()
+    st, graph_md, verdict_clear, decisions_md, log_md, approve_row = run_scenario()
     assert st is not None
     assert st.orchestrator is not None
     assert st.result is not None
+    assert verdict_clear == ""  # verdict line cleared on a fresh run
 
     # Graph rendered
     assert "leg1_pvg_nrt" in graph_md
