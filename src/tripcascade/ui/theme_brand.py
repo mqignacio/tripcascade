@@ -36,8 +36,28 @@ FONT_DISPLAY = ["Nunito", "Trebuchet MS", "Verdana", "sans-serif"]
 FONT_BODY = ["Source Sans 3", "Source Sans Pro", "Helvetica Neue", "Arial", "sans-serif"]
 FONT_MONO = ["JetBrains Mono", "Menlo", "Consolas", "monospace"]
 
+# Gradio 6 note: the primary button reads var(--primary-600) — a direct
+# .set(button_primary_background_fill=...) loses cascade order to the default,
+# so the brand teal goes in as a custom primary SCALE (the pattern the old
+# gold/navy theme proved). Neutral scale carries the mist/seafoam/ink family.
+TEAL_HUE = gr.themes.Color(
+    c50="#E6F4F3", c100="#CCEAE8", c200="#9CD6D2", c300="#5BB8B2",
+    c400="#2A9D8F", c500="#0E7C7B", c600="#0E7C7B", c700="#0B6362",
+    c800="#094F4F", c900="#073D3D", c950="#052C2C", name="tripcascade-teal",
+)
+HARBOR_HUE = gr.themes.Color(
+    c50="#FBFEFD", c100="#EFF7F6", c200="#DFF0EE", c300="#D4E4E2",
+    c400="#A9C4C0", c500="#7FA09B", c600="#5C7A76", c700="#48666E",
+    c800="#2E4A50", c900="#14343B", c950="#0B2226", name="tripcascade-harbor",
+)
+
 tripcascade_theme = (
-    gr.themes.Base(font=FONT_BODY, font_mono=FONT_MONO)
+    gr.themes.Soft(
+        font=FONT_BODY,
+        font_mono=FONT_MONO,
+        primary_hue=TEAL_HUE,
+        neutral_hue=HARBOR_HUE,
+    )
     .set(
         body_background_fill=MIST,
         block_background_fill=SEAFOAM_TINT,
@@ -55,6 +75,30 @@ tripcascade_theme = (
         button_secondary_border_color=SHORELINE,
         input_background_fill=MIST,
         input_border_color=SHORELINE,
+        # Pin the dark scheme to the same brand values: the brand is light-first
+        # and Gradio auto-switches on prefers-color-scheme (headless Chrome and
+        # dark-mode macOS alike). Dark tokens would otherwise render neutral_950.
+        body_background_fill_dark=MIST,
+        background_fill_primary_dark=MIST,       # Soft default: *neutral_950 (the dark page wash)
+        background_fill_secondary_dark=SEAFOAM_TINT,
+        block_background_fill_dark=SEAFOAM_TINT,
+        checkbox_background_color_dark=SEAFOAM_TINT,
+        code_background_fill_dark=SEAFOAM_TINT,
+        table_even_background_fill_dark=MIST,
+        table_odd_background_fill_dark=SEAFOAM_TINT,
+        body_text_color_dark=DEEP_INK,
+        body_text_color_subdued_dark=HARBOR,
+        border_color_primary_dark=SHORELINE,
+        border_color_accent_dark=TEAL,
+        button_primary_background_fill_dark=TEAL,
+        button_primary_text_color_dark=MIST,
+        button_primary_background_fill_hover_dark=TEAL_HOVER,
+        button_primary_border_color_dark=TEAL,
+        button_secondary_background_fill_dark=SEAFOAM_TINT,
+        button_secondary_text_color_dark=DEEP_INK,
+        button_secondary_border_color_dark=SHORELINE,
+        input_background_fill_dark=MIST,
+        input_border_color_dark=SHORELINE,
         block_radius="14px",
         # Gradio 6 splits button_radius into per-size vars (generator targets 4/5)
         button_large_radius="999px",

@@ -29,6 +29,7 @@ from tripcascade.atlas_tools.client import CLISubprocessClient, StubAtlasClient
 from tripcascade.forecast.inference import predict_disruption_prob
 from tripcascade.graph.builder import load_demo_itinerary
 from tripcascade.graph.models import DecisionStatus
+from tripcascade.ui.theme_brand import tripcascade_theme
 from tripcascade.watcher.events import make_scripted_event, populate_forecast
 
 logger = logging.getLogger(__name__)
@@ -37,21 +38,26 @@ DISRUPTED_LEG = "leg1_pvg_nrt"
 SCRIPTED_P = 0.82  # represents the typhoon-augmented forecast signal (demo trigger)
 
 # ---------------------------------------------------------------------------
-# Aviation-dusk palette (deck/gradio_gui_redesign.md)
+# TripCascade brand palette (brands/tripcascade tokens.json v1, 2026-08-31)
+# Light-first: Mist White base, Cascade Teal signal, Seafoam surfaces.
+# Brand law (rules.md): red = confirmed loss ONLY; coral = graphic-only
+# (Coral Ink is the text-safe warm alert); no gradients; mono for data.
 # ---------------------------------------------------------------------------
 
 PAL = {
-    "base": "#0D1B2A",
-    "surface": "#1B2838",
-    "surface_hi": "#243447",
-    "accent": "#D4A853",
-    "text": "#F0F6FC",
-    "text_muted": "#8B949E",
-    "at_risk": "#E5484D",
-    "affected": "#F5A623",
-    "settled": "#3FB950",
-    "held": "#1F6FEB",
-    "advisory": "#8B949E",
+    "base": "#FBFEFD",        # Mist White — color.background
+    "surface": "#EFF7F6",     # Seafoam Tint — color.surface
+    "surface_hi": "#DFF0EE",  # Seafoam — chip/badge fills
+    "border": "#D4E4E2",      # Shoreline — hairlines
+    "accent": "#0E7C7B",      # Cascade Teal — the "handled" signal
+    "text": "#14343B",        # Deep Ink
+    "text_muted": "#48666E",  # Harbor Gray (6.09:1 — AA text-safe)
+    "at_risk": "#8A5F00",     # Watch Amber — breach WARNING (never red)
+    "affected": "#2A9D8F",    # Cascade Mid — the mid cascade step (graphic)
+    "settled": "#257446",     # All-Clear
+    "held": "#B23E24",        # Coral Ink — escalation (text-safe)
+    "advisory": "#48666E",    # Harbor Gray
+    "danger": "#C0392B",      # Disruption Red — confirmed loss/failure only
 }
 
 STATUS_COLOR = {
@@ -77,48 +83,35 @@ DECISION_STATUS_COLOR = {
     "executed": PAL["settled"],
     "held": PAL["held"],
     "advisory": PAL["advisory"],
-    "rejected": PAL["at_risk"],
+    "rejected": PAL["text_muted"],  # rejection keeps the original booking — not a loss
     "proposed": PAL["text_muted"],
-    "given_up": PAL["at_risk"],
+    "given_up": PAL["danger"],       # a genuine failure — red's only role
 }
 
 OUTCOME_COLOR = {
     "auto_settled": PAL["settled"],
-    "human_approved": PAL["held"],
-    "human_rejected": PAL["at_risk"],
+    "human_approved": PAL["settled"],
+    "human_rejected": PAL["text_muted"],
 }
 
-# Custom Gradio hues for the aviation-dusk theme (Gradio 6: Color requires
-# c50..c950 + optional name; full swatch so no version-drift TypeErrors).
-GOLD_HUE = gr.themes.Color(
-    c50="#2b2113", c100="#fdf6e3", c200="#f5dba1", c300="#e8c878",
-    c400="#d4a853", c500="#d4a853", c600="#b8923f", c700="#967533",
-    c800="#7a5e2b", c900="#5e4820", c950="#3d2f15", name="tripcascade-gold",
-)
-NAVY_HUE = gr.themes.Color(
-    c50="#101d2b", c100="#f0f6fc", c200="#d2dee8", c300="#a9bccc",
-    c400="#7d96a8", c500="#5a7384", c600="#3d5666", c700="#2a3d4a",
-    c800="#1b2838", c900="#0d1b2a", c950="#07101a", name="tripcascade-navy",
-)
+# Brand theme generated from tokens (ui/theme_brand.py) — no custom hues needed.
 
 # ---------------------------------------------------------------------------
 # CSS (Blocks-level)
 # ---------------------------------------------------------------------------
 
 BLOCKS_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-html, body { background: #0D1B2A !important; }
-.gradio-container { max-width: 1400px !important; background: #0D1B2A !important; }
+html, body { background: #FBFEFD !important; }
+.gradio-container { max-width: 1120px !important; background: #FBFEFD !important; }
 .footer { display: none !important; }
-/* override gradio default font */
-.gradio-container * { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif !important; }
-/* dark background for all panels */
-.gradio-container .form { background: #1B2838 !important; border-color: #243447 !important; }
-.gradio-container button { border-radius: 8px !important; font-weight: 600 !important; }
-/* pulsing border for held cards */
-@keyframes tc-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(31,111,235,0.5); } 50% { box-shadow: 0 0 0 6px rgba(31,111,235,0); } }
-.tc-pulse { animation: tc-pulse 2s infinite; }
+/* brand type law: Source Sans 3 body stack; Nunito reserved for display;
+   JetBrains Mono for every model/ledger quantity (mono-for-data) */
+.gradio-container * { font-family: 'Source Sans 3', 'Source Sans Pro', 'Helvetica Neue', Arial, sans-serif !important; }
+.gradio-container h1, .tc-display { font-family: 'Nunito', 'Trebuchet MS', Verdana, sans-serif !important; }
+.gradio-container code, .tc-mono { font-family: 'JetBrains Mono', Menlo, Consolas, monospace !important; }
+/* light brand surfaces for form blocks */
+.gradio-container .form { background: #EFF7F6 !important; border-color: #D4E4E2 !important; }
+.gradio-container button { font-weight: 600 !important; }
 """
 
 # ---------------------------------------------------------------------------
@@ -179,14 +172,14 @@ def render_graph(graph, cascade=None) -> str:
     hidden_test_text_parts = []
 
     svg_parts = [
-        f'<svg viewBox="0 0 {view_w} 320" width="100%" style="font-family:Inter,sans-serif;'
-        f'background:{PAL["base"]};border-radius:12px;" xmlns="http://www.w3.org/2000/svg">',
+        f'<svg viewBox="0 0 {view_w} 320" width="100%" style="'
+        f'background:{PAL["base"]};border-radius:14px;" xmlns="http://www.w3.org/2000/svg">',
     ]
 
     # settlement cap line
     cap = graph.settlement_cap_cents
     svg_parts.append(
-        f'<text x="30" y="24" fill="{PAL["accent"]}" font-size="13" font-weight="600">'
+        f'<text x="30" y="24" fill="{PAL["accent"]}" font-size="14" font-weight="600">'
         f'Settlement cap: S${cap / 100:.0f} ({cap}c) &#183; Trip dependency graph</text>'
     )
 
@@ -204,7 +197,7 @@ def render_graph(graph, cascade=None) -> str:
         label = "check-in" if "hotel" in to_node.node_id else "connection"
         svg_parts.append(
             f'<text x="{(x1 + x2) / 2}" y="{ymid - 10}" text-anchor="middle" '
-            f'fill="{PAL["text_muted"]}" font-size="11">{label}</text>'
+            f'fill="{PAL["text_muted"]}" font-size="13">{label}</text>'
         )
 
     # arrowhead def
@@ -235,20 +228,33 @@ def render_graph(graph, cascade=None) -> str:
             border = PAL["held"]
             badge = "HELD"
         else:
-            border = PAL["text_muted"]
+            border = PAL["border"]
             badge = node_status.upper()
+
+        # Badge anatomy per brand: escalation = Coral Ink fill w/ white text;
+        # status = white fill, status-color text + 1px border (text-safe);
+        # neutral = Seafoam fill w/ Deep Ink text. Cascade Mid is graphic-only
+        # (fails AA as text), so AFFECTED uses the neutral badge + mid left bar.
+        if is_held:
+            badge_bg, badge_fg, badge_bd = PAL["held"], "#FFFFFF", "none"
+        elif is_at_risk or is_settled:
+            badge_bg, badge_fg, badge_bd = "#FFFFFF", border, border
+        else:
+            badge_bg, badge_fg, badge_bd = PAL["surface_hi"], PAL["text"], "none"
+        bw = len(badge) * 8 + 20  # pill width for 13px bold caps + padding
+        bx = node_w - 14 - bw
 
         icon = NODE_ICON.get(node.node_type.value, "&#9679;")
         route = f"{node.location_origin or '&#8212;'} &#8594; {node.location_destination or '&#8212;'}"
         date_str = node.scheduled_start.strftime("%d %b %H:%M") if node.scheduled_start else "—"
 
-        # probability bar
+        # probability bar — data leads in Cascade Teal (chart rule: series 1
+        # is always teal); the breach is carried by the badge, not bar color
         prob = node.disruption_probability
-        prob_pct = int((prob or 0) * 100)
-        prob_color = PAL["at_risk"] if (prob or 0) >= 0.35 else PAL["settled"]
+        prob_color = PAL["accent"]
 
-        # actionable / advisory label
-        action_label = "actionable flight" if node.actionable else "advisory"
+        # actionable / advisory label (short form — the badge needs the room)
+        action_label = "actionable" if node.actionable else "advisory"
         node_type_label = node.node_type.value
 
         # hidden text block for test substrings (also visible in the card)
@@ -258,46 +264,52 @@ def render_graph(graph, cascade=None) -> str:
 
         svg_parts.append(
             f'<g transform="translate({x},{y})">'
-            # card background
+            # card: Seafoam Tint, 1px Shoreline, 14px radius (brand card anatomy)
             f'<rect width="{node_w}" height="{node_h}" rx="14" '
-            f'fill="{PAL["surface"]}" stroke="{border}" stroke-width="3"/>'
-            # top status bar
-            f'<rect width="{node_w}" height="32" rx="14" fill="{border}"/>'
-            f'<rect y="16" width="{node_w}" height="16" fill="{border}"/>'
+            f'fill="{PAL["surface"]}" stroke="{PAL["border"]}" stroke-width="1"/>'
+            # 6px status left bar (graphic cue — the lower-third pattern)
+            f'<rect x="0" y="10" width="6" height="{node_h - 20}" rx="3" fill="{border}"/>'
             # icon
-            f'<text x="14" y="23" font-size="16" fill="#fff">{icon}</text>'
-            # type + badge
-            f'<text x="36" y="23" font-size="12" fill="#fff" font-weight="600">'
+            f'<text x="18" y="31" font-size="16" fill="{PAL["text"]}">{icon}</text>'
+            # type + action label
+            f'<text x="40" y="31" font-size="13" fill="{PAL["text_muted"]}" font-weight="600">'
             f'{_esc(node_type_label)} &#183; {_esc(action_label)}</text>'
-            f'<text x="{node_w - 14}" y="23" text-anchor="end" font-size="12" '
-            f'fill="#fff" font-weight="700">{badge}</text>'
+            # status badge pill (top-right); >=13px so rendered size >= 14px
+            # (SVG viewBox 1000px renders at ~1088px in the 1120px container)
+            f'<rect x="{bx}" y="14" width="{bw}" height="26" rx="13" fill="{badge_bg}"'
+            + (f' stroke="{badge_bd}" stroke-width="1"/>' if badge_bd != "none" else "/>")
+            + f'<text x="{bx + bw / 2:.0f}" y="32" text-anchor="middle" font-size="13" '
+            f'fill="{badge_fg}" font-weight="700">{badge}</text>'
             # short label (Leg 1 / Hotel)
-            f'<text x="14" y="58" font-size="20" font-weight="700" fill="{PAL["text"]}">'
+            f'<text x="18" y="66" font-size="20" font-weight="700" fill="{PAL["text"]}">'
             f'{_esc(_node_short_id(node.node_id))}</text>'
             # route
-            f'<text x="14" y="82" font-size="17" fill="{PAL["accent"]}" font-weight="600">{route}</text>'
+            f'<text x="18" y="90" font-size="17" fill="{PAL["accent"]}" font-weight="600">{route}</text>'
             # date
-            f'<text x="14" y="104" font-size="13" fill="{PAL["text_muted"]}">{_esc(date_str)}</text>'
-            # probability bar label
-            f'<text x="14" y="134" font-size="12" fill="{PAL["text_muted"]}">P(disruption)</text>'
-            f'<text x="{node_w - 14}" y="134" text-anchor="end" font-size="14" font-weight="700" '
-            f'fill="{prob_color}">{_fmt_prob(prob)}</text>'
-            # probability bar
-            f'<rect x="14" y="142" width="{node_w - 28}" height="10" rx="5" fill="{PAL["base"]}"/>'
-            f'<rect x="14" y="142" width="{int((node_w - 28) * (prob or 0))}" height="10" rx="5" '
+            f'<text x="18" y="112" font-size="13" fill="{PAL["text_muted"]}">{_esc(date_str)}</text>'
+            # probability bar label + mono value (mono-for-data)
+            f'<text x="18" y="140" font-size="13" fill="{PAL["text_muted"]}">P(disruption)</text>'
+            f'<text x="{node_w - 14}" y="140" text-anchor="end" font-size="14" font-weight="700" '
+            f'fill="{PAL["text"]}" style="font-family:\'JetBrains Mono\',Menlo,Consolas,monospace !important;">'
+            f'{_fmt_prob(prob)}</text>'
+            # probability bar: Shoreline track, Cascade Teal fill
+            f'<rect x="18" y="148" width="{node_w - 32}" height="10" rx="5" fill="{PAL["border"]}"/>'
+            f'<rect x="18" y="148" width="{int((node_w - 32) * (prob or 0))}" height="10" rx="5" '
             f'fill="{prob_color}"/>'
-            # threshold line marker
-            f'<line x1="{14 + int((node_w - 28) * 0.35)}" y1="140" x2="{14 + int((node_w - 28) * 0.35)}" '
-            f'y2="154" stroke="{PAL["text"]}" stroke-width="1.5" stroke-dasharray="3,2"/>'
-            # node id (small, for traceability + test substrings)
-            f'<text x="14" y="180" font-size="11" fill="{PAL["text_muted"]}" font-family="monospace">'
+            # threshold marker = Watch Amber dashed (warning line)
+            f'<line x1="{18 + int((node_w - 32) * 0.35)}" y1="146" x2="{18 + int((node_w - 32) * 0.35)}" '
+            f'y2="160" stroke="{PAL["at_risk"]}" stroke-width="1.5" stroke-dasharray="3,2"/>'
+            # node id (small, mono, for traceability + test substrings)
+            f'<text x="18" y="182" font-size="13" fill="{PAL["text_muted"]}" '
+            f'style="font-family:\'JetBrains Mono\',Menlo,Consolas,monospace !important;">'
             f'{_esc(node.node_id)}</text>'
             # orderNo if present
         )
         ref = node.atlas_entity_ref
         if ref and ref.orderNo:
             svg_parts.append(
-                f'<text x="14" y="200" font-size="11" fill="{PAL["text_muted"]}" font-family="monospace">'
+                f'<text x="18" y="202" font-size="13" fill="{PAL["text_muted"]}" '
+                f'style="font-family:\'JetBrains Mono\',Menlo,Consolas,monospace !important;">'
                 f'orderNo: {_esc(ref.orderNo[:24])}</text>'
             )
         svg_parts.append("</g>")
@@ -356,8 +368,15 @@ def render_decisions(result) -> str:
 
         icon = NODE_ICON.get("hotel", "&#9992;") if d.advisory else "&#9992;"
 
-        # pulsing class for held cards (stops once executed/rejected)
-        pulse_cls = " tc-pulse" if status_val == "held" else ""
+        # Badge anatomy per brand (rules.md coral-graphic-only + status-semantics):
+        # HELD = escalation badge (Coral Ink fill, white text); AUTO/DONE =
+        # status badge (white fill, All-Clear text + border); others = neutral.
+        if badge == "HELD":
+            badge_bg, badge_fg, badge_bd = PAL["held"], "#FFFFFF", "none"
+        elif badge in ("AUTO", "DONE"):
+            badge_bg, badge_fg, badge_bd = "#FFFFFF", PAL["settled"], PAL["settled"]
+        else:
+            badge_bg, badge_fg, badge_bd = PAL["surface_hi"], PAL["text"], "none"
 
         # verdict text (preserves 'auto-settled', 'approval required', 'advisory';
         # terminal states get explicit outcome text)
@@ -373,7 +392,7 @@ def render_decisions(result) -> str:
             fare_line = (
                 f'<div style="color:{PAL["text_muted"]};font-size:13px;margin-top:4px;">'
                 f'action: <code style="color:{PAL["accent"]}">{_esc(d.action.value)}</code> '
-                f"&middot; fare diff: S${d.amount_cents / 100:.0f} ({d.amount_cents}c) "
+                f'&middot; fare diff: <code style="color:{PAL["text"]}">S${d.amount_cents / 100:.0f} ({d.amount_cents}c)</code> '
                 f'&middot; model: <code style="color:{PAL["accent"]}">{_esc(d.model_tier_used)}</code>'
                 f"</div>"
             )
@@ -385,10 +404,11 @@ def render_decisions(result) -> str:
             )
 
         parts.append(
-            f'<div style="display:flex;background:{PAL["surface"]};border-radius:10px;'
-            f'overflow:hidden;border:2px solid {color};{""}'
-            f'class="tc-card{pulse_cls}">'
-            # stub
+            f'<div style="display:flex;background:{PAL["surface"]};border-radius:14px;'
+            f'overflow:hidden;border:1px solid {PAL["border"]};'
+            f'box-shadow:0 4px 16px #14343B1F;'
+            f'class="tc-card">'
+            # stub (status-color graphic, white icon)
             f'<div style="background:{color};width:52px;display:flex;align-items:center;'
             f'justify-content:center;font-size:22px;color:#fff;">{icon}</div>'
             # body
@@ -398,10 +418,12 @@ def render_decisions(result) -> str:
             f'<div style="color:{PAL["text"]};font-size:14px;margin-top:2px;">{_esc(verdict)}</div>'
             f"{fare_line}"
             f"</div>"
-            # badge
-            f'<div style="background:{color};padding:8px 14px;display:flex;align-items:center;'
-            f'justify-content:center;font-size:12px;font-weight:700;color:#fff;'
-            f'letter-spacing:1px;">{_esc(badge)}</div>'
+            # badge pill (brand badge anatomy)
+            f'<div style="display:flex;align-items:center;padding:0 16px;">'
+            f'<span style="background:{badge_bg};color:{badge_fg};padding:6px 16px;'
+            f'border-radius:999px;font-size:12px;font-weight:700;letter-spacing:1px;'
+            + (f'border:1px solid {badge_bd};' if badge_bd != "none" else "")
+            + f'">{_esc(badge)}</span></div>'
             f"</div>"
         )
 
@@ -423,7 +445,7 @@ def render_decisions(result) -> str:
 
     if result.given_up:
         parts.append(
-            f'<div style="background:{PAL["at_risk"]};padding:12px;border-radius:8px;'
+            f'<div style="background:{PAL["danger"]};padding:12px;border-radius:14px;'
             f'margin-top:8px;color:#fff;font-weight:600;">'
             f"&#9940; GAVE UP: {_esc(result.give_up_reason)}</div>"
         )
@@ -605,9 +627,9 @@ def reject_held(st: AppState):
     held = st.result.held_for_approval[0]
     rec = st.orchestrator.policy.reject(held, "rejected by traveler — keep original booking")
     msg = (
-        f'<div style="background:{PAL["surface"]};border:2px solid {PAL["at_risk"]};'
-        f'border-radius:10px;padding:14px 18px;margin:12px 0;">'
-        f'<span style="color:{PAL["at_risk"]};font-size:18px;font-weight:700;">'
+        f'<div style="background:{PAL["surface"]};border:2px solid {PAL["text_muted"]};'
+        f'border-radius:14px;padding:14px 18px;margin:12px 0;">'
+        f'<span style="color:{PAL["text"]};font-size:18px;font-weight:700;">'
         f"&#9940; REJECTED</span>"
         f'<div style="color:{PAL["text"]};font-size:15px;margin-top:6px;">'
         f"{held.node_id} &middot; original booking kept &middot; recorded "
@@ -628,7 +650,7 @@ def reject_held(st: AppState):
 
 # Gradio 6: theme/css moved from Blocks() to launch() (constructor silently
 # ignores them with a UserWarning in 6.x).
-DEMO_THEME = gr.themes.Soft(primary_hue=GOLD_HUE, neutral_hue=NAVY_HUE)
+DEMO_THEME = tripcascade_theme
 
 
 def build_app():
@@ -636,15 +658,15 @@ def build_app():
         # header
         gr.HTML(
             f'<div style="display:flex;justify-content:space-between;align-items:center;'
-            f'padding:16px 0;border-bottom:1px solid {PAL["surface_hi"]};margin-bottom:16px;">'
+            f'padding:16px 0;border-bottom:1px solid {PAL["border"]};margin-bottom:16px;">'
             f'<div>'
-            f'<h1 style="color:{PAL["accent"]};font-size:28px;margin:0;font-weight:700;">TripCascade</h1>'
+            f'<h1 class="tc-display" style="color:{PAL["text"]};font-size:28px;margin:0;font-weight:800;">TripCascade</h1>'
             f'<p style="color:{PAL["text_muted"]};font-size:14px;margin:4px 0 0 0;">'
             f"Forecast-driven agentic trip re-planning with bounded autonomy</p>"
             f"</div>"
             f'<div style="text-align:right;">'
-            f'<div style="background:{PAL["surface"]};padding:6px 14px;border-radius:6px;'
-            f'border:1px solid {PAL["accent"]};color:{PAL["accent"]};font-size:12px;'
+            f'<div style="background:{PAL["surface_hi"]};padding:6px 14px;border-radius:999px;'
+            f'color:{PAL["text"]};font-size:12px;'
             f'font-weight:700;letter-spacing:1px;">BUILT WITH QODER</div>'
             f'<div style="color:{PAL["text_muted"]};font-size:11px;margin-top:4px;">'
             f"PVG &rarr; NRT &rarr; PVG &middot; family of 3 &middot; 4-6 Sep 2026</div>"
@@ -670,7 +692,8 @@ def build_app():
         )
         with gr.Row(visible=False) as approve_row:
             approve_btn = gr.Button("Approve held re-plan (Leg 2)", variant="primary", size="lg")
-            reject_btn = gr.Button("Reject", variant="stop", size="lg")
+            # secondary, not 'stop': rejection keeps the original booking — not a loss
+            reject_btn = gr.Button("Reject", variant="secondary", size="lg")
         log_html = gr.HTML(
             value=f'<div style="background:{PAL["surface"]};padding:24px;border-radius:12px;'
             f'color:{PAL["text_muted"]};">Decision-learning log will appear here.</div>'
